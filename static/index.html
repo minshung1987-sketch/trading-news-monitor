@@ -1,0 +1,1301 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>交易新聞監測</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23141c28'/%3E%3Cg fill='%23b9c8ff'%3E%3Crect x='7' y='8' width='2' height='16' opacity='.35'/%3E%3Crect x='11' y='8' width='3' height='16' opacity='.5'/%3E%3Crect x='16' y='8' width='4' height='16' opacity='.7'/%3E%3Crect x='22' y='8' width='5' height='16'/%3E%3C/g%3E%3C/svg%3E">
+<script>
+  // 在畫面繪製前套用主題，避免閃一下
+  (function () {
+    try {
+      var t = JSON.parse(localStorage.getItem('tnm.theme'));
+      if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      var u = JSON.parse(localStorage.getItem('tnm.updown')) || 'tw';
+      document.documentElement.dataset.theme = t;
+      document.documentElement.dataset.updown = u;
+    } catch (e) { document.documentElement.dataset.theme = 'light'; document.documentElement.dataset.updown = 'tw'; }
+  })();
+</script>
+<style>
+  :root {
+    --bg: #edf0f4;
+    --sheet: #fbfcfd;
+    --side: #e3e8ee;
+    --rule: #d5dce4;
+    --ink: #17212c;
+    --ink2: #546274;
+    --ink3: #8592a3;
+    --accent: #2c4bd8;
+    --accent-ink: #ffffff;
+    --accent-soft: rgba(44, 75, 216, .07);
+    --accent-soft2: rgba(44, 75, 216, .14);
+    --r1: #ccd4de; --r2: #9fb0d9; --r3: #6f8be6; --r4: #3d5fe0; --r5: #1b2fb0;
+    --up: #d33a2f;
+    --down: #12894a;
+    --hover: rgba(23, 33, 44, .045);
+    --warn: #b4571b;
+    --font: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", "Heiti TC", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  [data-theme="dark"] {
+    --bg: #0e141d;
+    --sheet: #121a25;
+    --side: #0a1017;
+    --rule: #222c3a;
+    --ink: #e6ebf2;
+    --ink2: #9aa8ba;
+    --ink3: #66758a;
+    --accent: #7f9bff;
+    --accent-ink: #0b1220;
+    --accent-soft: rgba(127, 155, 255, .08);
+    --accent-soft2: rgba(127, 155, 255, .16);
+    --r1: #2a3442; --r2: #3d5285; --r3: #5877dc; --r4: #7f9bff; --r5: #c4d2ff;
+    --up: #ff6b5e;
+    --down: #3ecf85;
+    --hover: rgba(255, 255, 255, .045);
+    --warn: #f0a25c;
+  }
+  [data-updown="intl"] { --up: #12894a; --down: #d33a2f; }
+  [data-theme="dark"][data-updown="intl"] { --up: #3ecf85; --down: #ff6b5e; }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body {
+    font: 14px/1.5 var(--font);
+    color: var(--ink);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+    font-variant-numeric: tabular-nums;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  a { color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* ---------------------------------------------------------- 版面 */
+  .app { display: grid; grid-template-columns: 244px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: 100%; }
+  .side {
+    background: var(--side); border-right: 1px solid var(--rule);
+    display: flex; flex-direction: column; min-height: 0;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 18px 18px 14px; font-size: 16px; font-weight: 700; letter-spacing: .02em; }
+  .mark { display: inline-flex; align-items: flex-end; gap: 2px; height: 20px; }
+  .mark i { display: block; height: 100%; border-radius: 1px; }
+  .mark i:nth-child(1) { width: 2px; background: var(--r2); }
+  .mark i:nth-child(2) { width: 3px; background: var(--r3); }
+  .mark i:nth-child(3) { width: 4px; background: var(--r4); }
+  .mark i:nth-child(4) { width: 5px; background: var(--r5); }
+
+  nav { flex: 1; overflow: auto; padding: 0 10px 12px; }
+  .nav-h { margin: 16px 8px 4px; font-size: 12px; font-weight: 600; color: var(--ink3); }
+  .nav-i {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    width: 100%; padding: 6px 10px; border: 0; border-radius: 6px; background: none; text-align: left;
+    color: var(--ink2);
+  }
+  .nav-i:hover { background: var(--hover); color: var(--ink); }
+  .nav-i[aria-current="true"] { background: var(--accent-soft2); color: var(--ink); font-weight: 600; }
+  .nav-i .n { font-size: 12px; min-width: 20px; text-align: center; padding: 0 6px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .nav-i.zero { color: var(--ink3); }
+  .nav-i.zero .n { display: none; }
+
+  .side-foot { border-top: 1px solid var(--rule); padding: 10px; display: grid; gap: 8px; }
+  .foot-btn {
+    display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px;
+    border: 1px solid var(--rule); border-radius: 6px; background: var(--sheet); text-align: left;
+  }
+  .foot-btn:hover { border-color: var(--ink3); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink3); flex: none; }
+  .dot.ok { background: var(--down); }
+  .dot.bad { background: var(--warn); }
+  [data-updown="tw"] .dot.ok { background: #2a9d63; }
+  .prefs { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; font-size: 12px; color: var(--ink2); }
+  .prefs .seg { justify-self: start; }
+  .keys { font-size: 12px; color: var(--ink3); display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  kbd { font: 600 11px var(--font); padding: 0 5px; border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 4px; background: var(--sheet); color: var(--ink2); }
+
+  .seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; background: var(--sheet); }
+  .seg button { border: 0; background: none; padding: 4px 10px; color: var(--ink2); display: inline-flex; align-items: center; gap: 6px; }
+  .seg button + button { border-left: 1px solid var(--rule); }
+  .seg button[aria-pressed="true"] { background: var(--accent-soft2); color: var(--ink); font-weight: 600; }
+  .seg button:hover { color: var(--ink); }
+  .seg .mini { width: 4px; height: 14px; border-radius: 1px; }
+
+  .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; }
+  .bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px;
+    padding: 12px 16px 8px; background: var(--bg);
+  }
+  .search { position: relative; flex: 1 1 260px; min-width: 200px; }
+  .search input {
+    width: 100%; height: 34px; padding: 0 12px; border: 1px solid var(--rule); border-radius: 6px; background: var(--sheet);
+  }
+  .search input::placeholder { color: var(--ink3); }
+  select, .field input, .field textarea, .field select {
+    height: 34px; padding: 0 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--sheet);
+  }
+  .bar2 {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px;
+    padding: 0 16px 10px; border-bottom: 1px solid var(--rule); color: var(--ink2); font-size: 13px;
+  }
+  .toggles, .status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+  .chk { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  .chk input { width: 15px; height: 15px; accent-color: var(--accent); margin: 0; }
+  .btn { height: 30px; padding: 0 12px; border: 1px solid var(--rule); border-radius: 6px; background: var(--sheet); display: inline-flex; align-items: center; gap: 8px; }
+  .btn:hover { border-color: var(--ink3); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn.danger { color: var(--warn); }
+  .btn[disabled] { opacity: .6; cursor: default; }
+  .spin { width: 12px; height: 12px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .scroll { flex: 1; min-height: 0; overflow: auto; position: relative; }
+  .banner {
+    position: sticky; top: 0; z-index: 3; display: block; width: 100%;
+    padding: 8px 16px; border: 0; border-bottom: 1px solid var(--accent); text-align: center;
+    background: var(--accent-soft2); backdrop-filter: blur(6px); font-weight: 600; color: var(--ink);
+  }
+  .banner[hidden] { display: none; }
+
+  /* ---------------------------------------------------------- 新聞列表 */
+  .grp {
+    position: sticky; top: 0; z-index: 2; padding: 7px 16px 6px; background: var(--bg);
+    font-size: 12px; font-weight: 600; color: var(--ink2); border-bottom: 1px solid var(--rule);
+  }
+  .banner:not([hidden]) ~ .list .grp { top: 37px; }
+  .digest-head { display: flex; align-items: center; gap: 12px; padding: 12px 16px; flex-wrap: wrap; border-bottom: 1px solid var(--rule); }
+  .digest-title { font-size: 15px; font-weight: 700; }
+  .digest-stats { color: var(--ink2); font-size: 13px; }
+  .ai-digest { margin: 0 16px 12px; padding: 12px 14px; background: var(--sheet); border: 1px solid var(--rule); border-radius: 8px; }
+  .ai-digest pre { white-space: pre-wrap; font-family: inherit; font-size: 13.5px; line-height: 1.6; margin: 0; }
+  .list { background: var(--sheet); min-height: 40%; }
+  .row {
+    --rw: 3px; --rc: var(--r1);
+    position: relative; display: grid; grid-template-columns: 62px minmax(0, 1fr) auto; column-gap: 14px;
+    padding: 11px 14px 11px 20px; border-bottom: 1px solid var(--rule);
+  }
+  .row::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: var(--rw); background: var(--rc); }
+  .row.imp2 { --rc: var(--r2); }
+  .row.imp3 { --rc: var(--r3); --rw: 4px; }
+  .row.imp4 { --rc: var(--r4); --rw: 5px; background: linear-gradient(90deg, var(--accent-soft), transparent 55%); }
+  .row.imp5 { --rc: var(--r5); --rw: 7px; background: linear-gradient(90deg, var(--accent-soft2), transparent 60%); }
+  .row:hover { background-color: var(--hover); }
+  .row.sel { box-shadow: inset 0 0 0 1.5px var(--accent); }
+
+  .time { display: flex; flex-direction: column; padding-top: 1px; }
+  .hm { font-size: 13px; font-weight: 600; }
+  .rel { font-size: 11.5px; color: var(--ink3); }
+  .body { min-width: 0; }
+  .title { display: block; font-size: 15px; line-height: 1.45; font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
+  .title:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .row.read .title { font-weight: 400; color: var(--ink2); }
+  .row.read .hm { font-weight: 400; color: var(--ink2); }
+  .row.read { --rc: var(--r1); }
+  .row.read.imp4, .row.read.imp5 { --rc: var(--r3); }
+
+  .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 4px; font-size: 12.5px; color: var(--ink2); }
+  .src { font-weight: 500; }
+  .tag {
+    padding: 0 7px; border: 1px solid var(--rule); border-radius: 3px; background: none; color: var(--ink2); font-size: 12px; line-height: 18px;
+  }
+  .tag:hover { border-color: var(--accent); color: var(--accent); }
+  .srcchip { padding: 0 9px; border: 1px solid var(--rule); border-radius: 12px; background: var(--accent-soft2); color: var(--ink); font-size: 12.5px; line-height: 22px; }
+  .srcchip[aria-pressed="false"] { background: none; color: var(--ink3); text-decoration: line-through; }
+  .srcchip:hover { border-color: var(--accent); }
+  .srclabel { color: var(--ink2); font-size: 12.5px; }
+  .official { padding: 0 6px; border-radius: 3px; background: var(--accent-soft2); color: var(--ink); font-size: 12px; line-height: 18px; font-weight: 600; }
+  .neutral { padding: 0 6px; border-radius: 3px; background: var(--hover); color: var(--ink3); font-size: 12px; line-height: 18px; }
+  .sent { font-weight: 600; }
+  .sent.up { color: var(--up); }
+  .sent.down { color: var(--down); }
+  .dupbtn { padding: 0; border: 0; background: none; color: var(--accent); font-size: 12.5px; }
+  .dupbtn:hover { text-decoration: underline; }
+  select.sortwarn { border-color: var(--warn); color: var(--warn); font-weight: 600; }
+  .scope { font-size: 12.5px; font-weight: 600; color: var(--ink); padding: 1px 8px; border-radius: 10px; background: var(--accent-soft2); }
+  .scope[hidden] { display: none; }
+  .trstat { font-size: 12.5px; color: var(--ink3); }
+  .trstat.bad { color: var(--warn); font-weight: 600; }
+  .verwarn { padding: 9px 16px; background: var(--warn); color: #fff; font-weight: 600; }
+  .verwarn[hidden] { display: none; }
+  .zh { margin-top: 2px; font-size: 14px; line-height: 1.45; color: var(--ink2); overflow-wrap: anywhere; }
+  .row.read .zh { color: var(--ink3); }
+  .row.hasimg { grid-template-columns: 62px 152px minmax(0, 1fr) auto; }
+  .thumb { position: relative; display: block; width: 152px; height: 102px; padding: 0; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; background: #fff; align-self: start; cursor: zoom-in; }
+  .thumb:hover { border-color: var(--accent); }
+  .thumb img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+  .thumb .more { position: absolute; right: 4px; bottom: 4px; padding: 0 6px; border-radius: 10px; background: rgba(0, 0, 0, .68); color: #fff; font-size: 11.5px; line-height: 18px; }
+  #dlgImg { width: min(1100px, 96vw); }
+  .lb-fig { margin: 0 0 18px; text-align: center; }
+  .lb-fig img { display: block; max-width: 100%; margin: 0 auto; background: #fff; border-radius: 4px; }
+  .lb-fig figcaption, .lb-fig a { display: inline-block; margin: 6px 10px 0; font-size: 13px; color: var(--ink2); }
+  .lb-title { color: var(--ink); font-weight: 600; text-decoration: none; }
+  .lb-title:hover { text-decoration: underline; }
+  .sum { margin: 6px 0 0; max-width: 78ch; color: var(--ink2); font-size: 13px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .dups { margin: 8px 0 0; padding: 0 0 0 12px; list-style: none; border-left: 2px solid var(--rule); display: grid; gap: 4px; font-size: 13px; }
+  .dups li { display: flex; gap: 10px; align-items: baseline; min-width: 0; }
+  .dups a { color: var(--ink2); overflow-wrap: anywhere; }
+  .dups .hm { font-weight: 400; color: var(--ink3); font-size: 12px; flex: none; }
+  .dups .src { color: var(--ink3); flex: none; }
+
+  .acts { display: flex; align-items: flex-start; gap: 2px; opacity: 0; transition: opacity .12s; }
+  .row:hover .acts, .row.sel .acts, .row:focus-within .acts, .row.starred .acts { opacity: 1; }
+  .ic { width: 30px; height: 30px; border: 0; border-radius: 6px; background: none; color: var(--ink3); font-size: 16px; line-height: 1; }
+  .ic:hover { background: var(--hover); color: var(--ink); }
+  .ic.on { color: #d99a00; }
+  .more { display: flex; justify-content: center; padding: 18px; background: var(--sheet); }
+  .empty { padding: 56px 24px; text-align: center; color: var(--ink2); background: var(--sheet); }
+  .empty h2 { margin: 0 0 6px; font-size: 16px; color: var(--ink); }
+  .empty p { margin: 0 auto 14px; max-width: 46ch; }
+
+  /* ---------------------------------------------------------- 對話框 */
+  dialog {
+    width: min(940px, 94vw); max-height: 88vh; padding: 0; border: 1px solid var(--rule); border-radius: 10px;
+    background: var(--sheet); color: var(--ink); overflow: hidden;
+  }
+  dialog[open] { display: flex; flex-direction: column; }
+  dialog::backdrop { background: rgba(8, 12, 18, .55); }
+  .dh { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px 0; }
+  .dh h2 { margin: 0; font-size: 17px; }
+  .tabs { display: flex; gap: 2px; padding: 10px 18px 0; border-bottom: 1px solid var(--rule); }
+  .tabs button { padding: 8px 14px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--ink2); }
+  .tabs button[aria-selected="true"] { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
+  .db { padding: 16px 18px; overflow: auto; flex: 1; }
+  .df { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 12px 18px; border-top: 1px solid var(--rule); }
+  .df .err { margin-right: auto; color: var(--warn); }
+  .hint { margin: 0 0 14px; color: var(--ink2); font-size: 13px; max-width: 80ch; }
+  .field { display: grid; gap: 4px; font-size: 12px; color: var(--ink3); min-width: 0; }
+  .field input, .field select { width: 100%; color: var(--ink); font-size: 14px; }
+  .field textarea { width: 100%; height: auto; padding: 6px 10px; color: var(--ink); font-size: 14px; resize: vertical; }
+  .wl-row, .fd-row { display: grid; gap: 10px 12px; align-items: start; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+  .wl-row > .chk { margin-top: 28px; }
+  .wl-row > .btn { margin-top: 22px; }
+  .fd-row > .chk, .fd-row > .url { margin-top: 28px; }
+  .fd-row > .btn { margin-top: 22px; }
+  .fd-row.add > .chk { margin-top: 28px; }
+  .fd-row.add > .btn { margin-top: 22px; }
+  .wl-row { grid-template-columns: 130px 110px minmax(180px, 1fr) 150px auto auto auto auto auto auto; }
+  .fd-row { grid-template-columns: auto 190px 100px auto minmax(140px, 1fr) auto; }
+  .fd-row .url { font-size: 12px; color: var(--ink3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .add { margin-top: 14px; }
+  .gen { display: grid; gap: 16px; max-width: 780px; }
+  .gen .field textarea { min-height: 180px; font-family: var(--font); }
+  .st-row { display: grid; grid-template-columns: 14px minmax(0, 1fr) 190px 50px; gap: 4px 12px; padding: 9px 0; border-bottom: 1px solid var(--rule); align-items: baseline; }
+  .st-row .err { grid-column: 2 / -1; color: var(--warn); font-size: 13px; overflow-wrap: anywhere; }
+  .st-row .m { color: var(--ink3); font-size: 12.5px; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 50; max-width: min(560px, 92vw);
+    padding: 10px 16px; border-radius: 8px; background: var(--ink); color: var(--bg); font-weight: 500;
+  }
+  .toast.bad { background: var(--warn); color: #fff; }
+  .toast[hidden] { display: none; }
+
+  .only-narrow { display: none; }
+  @media (max-width: 860px) {
+    .app { grid-template-columns: minmax(0, 1fr); }
+    .side { position: fixed; inset: 0 auto 0 0; width: 260px; z-index: 30; transform: translateX(-102%); transition: transform .18s; box-shadow: 4px 0 24px rgba(0,0,0,.25); }
+    .side.open { transform: none; }
+    .only-narrow { display: inline-flex; }
+    .bar { padding-bottom: 6px; gap: 8px; }
+    .bar select { flex: 1 1 calc(50% - 4px); min-width: 0; }
+    #selHours { order: 1; } #selSort { order: 2; }
+    .bar .seg { order: 3; flex: 1 1 100%; }
+    .bar .seg button { flex: 1; justify-content: center; padding: 4px 4px; }
+    .bar2 { gap: 6px 12px; padding-bottom: 8px; }
+    .row { grid-template-columns: 48px minmax(0, 1fr); padding-right: 10px; }
+    .row.hasimg { grid-template-columns: 48px minmax(0, 1fr); }
+    .row.hasimg .time { grid-row: 1 / 4; }
+    .row.hasimg .thumb { grid-column: 2; grid-row: 1; width: 100%; height: 150px; margin-bottom: 8px; }
+    .row.hasimg .body { grid-column: 2; grid-row: 2; }
+    .row.hasimg .acts { grid-row: 3; }
+    .acts { grid-column: 2; opacity: 1; margin-top: 2px; }
+    .bar select { flex: 1 1 45%; }
+    .wl-row, .fd-row { grid-template-columns: 1fr 1fr; }
+    .wl-row > .chk, .wl-row > .btn, .fd-row > .chk, .fd-row > .url, .fd-row > .btn { margin-top: 0; }
+    .st-row { grid-template-columns: 14px minmax(0, 1fr); }
+    .st-row .m { grid-column: 2; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation-duration: .01ms !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side" id="side">
+    <div class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>交易新聞監測</span></div>
+    <nav id="nav" aria-label="新聞分類"></nav>
+    <div class="side-foot">
+      <button class="foot-btn" id="btnSources"><span class="dot" id="srcDot"></span><span id="srcText">來源狀態</span></button>
+      <button class="foot-btn" id="btnSettings">設定關注清單與來源</button>
+      <div class="prefs">
+        <span>外觀</span>
+        <div class="seg" id="segTheme"><button data-v="light">淺色</button><button data-v="dark">深色</button></div>
+        <span>漲跌配色</span>
+        <div class="seg" id="segUpdown"><button data-v="tw">紅漲綠跌</button><button data-v="intl">綠漲紅跌</button></div>
+      </div>
+      <div class="keys" aria-label="快速鍵">
+        <span><kbd>j</kbd> <kbd>k</kbd> 上下移動</span><span><kbd>o</kbd> 開啟</span><span><kbd>s</kbd> 星號</span>
+        <span><kbd>m</kbd> 已讀</span><span><kbd>r</kbd> 更新</span><span><kbd>/</kbd> 搜尋</span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="verwarn" id="verWarn" hidden></div>
+    <header class="bar">
+      <button class="btn only-narrow" id="btnMenu" aria-label="開啟選單">選單</button>
+      <div class="search"><input id="q" type="search" placeholder="搜尋標題、摘要或來源" autocomplete="off" aria-label="搜尋新聞"></div>
+      <select id="selHours" aria-label="時間範圍">
+        <option value="1">最近 1 小時</option><option value="6">最近 6 小時</option><option value="24">最近 24 小時</option>
+        <option value="72">最近 3 天</option><option value="168">最近 7 天</option><option value="0">全部保留的新聞</option>
+      </select>
+      <div class="seg" id="segImp" role="group" aria-label="最低重要度">
+        <button data-v="1"><span class="mini" style="background:var(--r1)"></span>全部</button>
+        <button data-v="2"><span class="mini" style="background:var(--r2)"></span>2 以上</button>
+        <button data-v="3"><span class="mini" style="background:var(--r3)"></span>3 以上</button>
+        <button data-v="4"><span class="mini" style="background:var(--r4)"></span>4 以上</button>
+      </div>
+      <select id="selSort" aria-label="排序">
+        <option value="time">最新的在最上面（依時間）</option><option value="importance">重要度高的在最上面</option>
+      </select>
+    </header>
+    <div class="bar2">
+      <div class="toggles">
+        <label class="chk"><input type="checkbox" id="fUnread">只看未讀</label>
+        <label class="chk"><input type="checkbox" id="fStar">只看星號</label>
+        <label class="chk" title="經濟日報／工商時報／華爾街見聞／東方財富網，不受多方／空方／中性關鍵詞限制（設定裡可以增減來源）"><input type="checkbox" id="fImportant">只看重要來源</label>
+        <label class="chk"><input type="checkbox" id="fMerge">合併相同報導</label>
+        <label class="chk"><input type="checkbox" id="fSum">顯示摘要</label>
+        <label class="chk" title="英文標題下方顯示機器翻譯的中文，僅供參考"><input type="checkbox" id="fTr">中文翻譯</label>
+        <span class="trstat" id="trStat" role="status"></span>
+        <label class="chk" title="有表格／圖表的新聞，在標題旁顯示縮圖（不含一般照片）"><input type="checkbox" id="fImg">圖表預覽</label>
+        <span class="trstat" id="imgStat" role="status"></span>
+        <div class="seg" id="segSent" role="group" aria-label="多空篩選">
+          <button data-v="">全部</button>
+          <button data-v="pos" title="標題有多方關鍵詞的新聞（純文字比對，設定裡可以改）">多方</button>
+          <button data-v="neg" title="標題有空方關鍵詞的新聞（純文字比對，設定裡可以改）">空方</button>
+          <button data-v="neutral">中性</button>
+        </div>
+      </div>
+      <div class="status">
+        <span class="scope" id="scopeLabel"></span>
+        <span id="stText">載入中…</span>
+        <button class="btn" id="btnNotify" title="有重要新聞（4 以上）時彈出系統通知">桌面通知：關</button>
+        <button class="btn" id="btnReadAll">全部標為已讀</button>
+        <button class="btn primary" id="btnRefresh">立即更新</button>
+      </div>
+      <div class="status" id="srcFilterRow" hidden role="group" aria-label="重要消息來源：只看哪些來源"></div>
+    </div>
+    <div class="scroll" id="scroll">
+      <button class="banner" id="banner" hidden></button>
+      <section class="list" id="list" aria-live="polite"></section>
+      <div class="more" id="more" hidden></div>
+    </div>
+  </main>
+</div>
+
+<dialog id="dlgSettings">
+  <div class="dh"><h2>設定</h2><button class="btn" id="setClose">關閉</button></div>
+  <div class="tabs" role="tablist" id="setTabs">
+    <button role="tab" data-t="watch">關注清單</button>
+    <button role="tab" data-t="feeds">新聞來源</button>
+    <button role="tab" data-t="gen">一般設定</button>
+  </div>
+  <div class="db" id="setBody"></div>
+  <div class="df"><span class="err" id="setErr"></span><button class="btn" id="setCancel">取消</button><button class="btn primary" id="setSave">儲存並更新</button></div>
+</dialog>
+
+<dialog id="dlgSources">
+  <div class="dh"><h2>來源狀態</h2><button class="btn" id="srcClose">關閉</button></div>
+  <div class="db" id="srcBody"></div>
+</dialog>
+
+<dialog id="dlgImg">
+  <div class="dh"><a class="lb-title" id="lbTitle" href="#" target="_blank" rel="noopener noreferrer"></a><button class="btn" id="lbClose">關閉</button></div>
+  <div class="db" id="lbBody"></div>
+</dialog>
+
+<div class="toast" id="toast" hidden role="status"></div>
+
+<script>
+(() => {
+'use strict';
+
+/* ------------------------------------------------------------ 小工具 */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const pad = n => String(n).padStart(2, '0');
+
+function h(tag, props, ...kids) {
+  const el = document.createElement(tag);
+  let value;
+  for (const [k, v] of Object.entries(props || {})) {
+    if (v === undefined || v === null || v === false) continue;
+    if (k === 'class') el.className = v;
+    else if (k === 'dataset') Object.assign(el.dataset, v);
+    else if (k === 'value') value = v;
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    else el.setAttribute(k, v === true ? '' : v);
+  }
+  for (const kid of kids.flat(Infinity)) {
+    if (kid === null || kid === undefined || kid === false) continue;
+    el.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
+  }
+  if (value !== undefined) el.value = value;
+  return el;
+}
+
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem('tnm.' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('tnm.' + k, JSON.stringify(v)); } catch (e) {} },
+};
+
+async function api(path, body) {
+  const opt = body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+  const r = await fetch(path, opt);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+  return j;
+}
+
+let toastTimer;
+function toast(msg, bad) {
+  const t = $('#toast');
+  t.textContent = msg; t.className = 'toast' + (bad ? ' bad' : ''); t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, bad ? 6000 : 3000);
+}
+
+const safeHref = u => /^https?:\/\//i.test(u || '') ? u : '#';
+const hm = ts => { const d = new Date(ts * 1000); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+function rel(ts) {
+  const s = Math.floor(Date.now() / 1000) - ts;
+  if (s < 60) return '剛剛';
+  if (s < 3600) return Math.floor(s / 60) + ' 分鐘前';
+  if (s < 86400) return Math.floor(s / 3600) + ' 小時前';
+  return Math.floor(s / 86400) + ' 天前';
+}
+function groupLabel(ts) {
+  const now = new Date(), d = new Date(ts * 1000);
+  if (now / 1000 - ts < 3600) return '最近一小時';
+  const sod = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000;
+  if (ts >= sod) return '今天稍早';
+  if (ts >= sod - 86400) return '昨天';
+  return (d.getMonth() + 1) + ' 月 ' + d.getDate() + ' 日 週' + '日一二三四五六'[d.getDay()];
+}
+
+/* ------------------------------------------------------------ 狀態 */
+const S = {
+  view: LS.get('view', { kind: 'all' }),
+  q: '', hours: LS.get('hours', 24), minImp: LS.get('minImp', 1), sort: LS.get('sort2', 'time'),
+  unread: LS.get('unread', false), starred: false, sent: '', important: false, importantExclude: new Set(), merge: LS.get('merge', true), showSummary: LS.get('sum2', true), img: LS.get('img', true), enDone: new Set(), enBusy: false, enPause: 0, imgFail: 0, tr: LS.get('tr', true), trDone: new Set(), trBusy: false, trPause: 0, trWarned: false,
+  items: [], total: 0, loading: false, sel: -1, maxId: 0,
+  expanded: new Set(), notified: new Set(), notify: LS.get('notify', false),
+  stats: null, refreshing: false,
+};
+
+function selectedImportantSources() {
+  // null = 不用篩，全部顯示；否則回傳目前勾選（沒被排除）的實際來源名稱清單。
+  if (!S.important || !S.importantExclude.size) return null;
+  const all = Object.keys((S.stats && S.stats.important_sources) || {});
+  const sel = all.filter(n => !S.importantExclude.has(n));
+  return sel.length < all.length ? sel : null;
+}
+function filterParams(extra) {
+  const p = new URLSearchParams();
+  if (S.view.kind === 'market') p.set('market', S.view.value);
+  if (S.view.kind === 'tag') p.set('tag', S.view.value);
+  if (S.q) p.set('q', S.q);
+  p.set('hours', S.hours);
+  if (S.minImp > 1) p.set('min_imp', S.minImp);
+  if (S.unread) p.set('unread', '1');
+  if (S.starred) p.set('starred', '1');
+  if (S.sent) p.set('sent', S.sent);
+  if (S.important) p.set('important', '1');
+  const srcSel = selectedImportantSources();
+  if (srcSel) srcSel.forEach(s => p.append('sources', s));
+  if (!S.merge) p.set('show_dups', '1');
+  p.set('sort', S.sort);
+  for (const [k, v] of Object.entries(extra || {})) p.set(k, v);
+  return p;
+}
+const hasFilters = () => S.q || S.minImp > 1 || S.unread || S.starred || S.sent || S.important || S.view.kind !== 'all';
+
+/* ------------------------------------------------------------ 載入 */
+async function loadArticles(reset = true, toTop = false) {
+  if (S.loading) return;
+  S.loading = true;
+  const keepId = reset && S.sel >= 0 && S.items[S.sel] ? S.items[S.sel].id : null;
+  const snapshotMax = S.stats ? S.stats.max_id : 0;
+  try {
+    const res = await api('/api/articles?' + filterParams({ limit: 100, offset: reset ? 0 : S.items.length }));
+    S.items = reset ? res.items : S.items.concat(res.items);
+    S.total = res.total;
+    if (reset) {
+      S.maxId = snapshotMax;
+      S.sel = keepId ? S.items.findIndex(a => a.id === keepId) : -1;
+      $('#banner').hidden = true;
+    }
+    renderList();
+    if (toTop) $('#scroll').scrollTop = 0;
+  } catch (e) {
+    toast('載入新聞失敗：' + e.message, true);
+  } finally { S.loading = false; }
+}
+
+let S_digestHours = 12;
+function digestItemEl(r) {
+  const tagBadges = (r.tags || []).map(t => h('span', { class: 'tag' }, t));
+  const sigBadges = (r.signals || []).map(g => h('span', { class: 'sent ' + (g.d > 0 ? 'up' : 'down') }, (g.d > 0 ? '▲ ' : '▼ ') + g.s + (g.d > 0 ? '利多' : '利空')));
+  return h('article', { class: 'row imp' + r.importance },
+    h('div', { class: 'time' }, h('span', { class: 'hm' }, hm(r.published)), h('span', { class: 'rel' }, rel(r.published))),
+    h('div', { class: 'body' },
+      h('a', { class: 'title', href: safeHref(r.url), target: '_blank', rel: 'noopener noreferrer' }, r.title),
+      h('div', { class: 'meta' }, h('span', { class: 'src' }, r.source),
+        r.source_count > 1 ? h('span', { class: 'tag', title: '有 ' + r.source_count + ' 個不同來源報導同一事件' }, r.source_count + ' 個來源都在報') : null,
+        ...tagBadges, ...sigBadges)));
+}
+function digestSection(title, items) {
+  if (!items || !items.length) return null;
+  return h('div', {}, h('div', { class: 'grp' }, title), ...items.map(digestItemEl));
+}
+async function loadDigest() {
+  const root = $('#list'); root.replaceChildren(h('div', { class: 'empty' }, h('h2', {}, '載入中…')));
+  try {
+    const d = await api('/api/digest?hours=' + S_digestHours);
+    root.replaceChildren();
+    const s = d.stats;
+    root.append(h('div', { class: 'digest-head' },
+      h('div', { class: 'digest-title' }, '過去 ' + S_digestHours + ' 小時摘要'),
+      h('select', { onchange: e => { S_digestHours = parseInt(e.target.value, 10); loadDigest(); } },
+        [6, 12, 18, 24, 48].map(hh => h('option', { value: hh, selected: hh === S_digestHours ? '' : null }, hh + ' 小時'))),
+      h('span', { class: 'digest-stats' },
+        '共 ' + s.total + ' 則　▲多方 ' + s.pos + '　▼空方 ' + s.neg + '　中性 ' + s.neutral),
+      h('button', { class: 'btn', id: 'aiDigestBtn', onclick: runAiDigest }, '✨ 產生 AI 文字摘要')));
+    root.append(h('div', { id: 'aiDigestOut' }));
+    root.append(digestSection('重要度最高', d.top_important));
+    root.append(digestSection('多家來源都在報', d.cross_source));
+    for (const m of Object.keys(d.by_market)) root.append(digestSection(m + ' 焦點', d.by_market[m]));
+    if (!s.total) root.append(h('div', { class: 'empty' }, h('h2', {}, '這段時間沒有新聞'), h('p', {}, '試著拉長時間範圍。')));
+  } catch (e) {
+    root.replaceChildren(h('div', { class: 'empty' }, h('h2', {}, '載入摘要失敗'), h('p', {}, e.message)));
+  }
+}
+async function runAiDigest() {
+  const btn = $('#aiDigestBtn'), out = $('#aiDigestOut');
+  btn.disabled = true; btn.textContent = '產生中…';
+  out.replaceChildren(h('p', { class: 'hint' }, '正在請 AI 整理，請稍候…'));
+  try {
+    const res = await api('/api/ai_digest', { hours: S_digestHours });
+    out.replaceChildren(h('div', { class: 'ai-digest' }, h('pre', {}, res.text)));
+  } catch (e) {
+    out.replaceChildren(h('p', { class: 'hint' }, 'AI 摘要失敗：' + e.message));
+  } finally {
+    btn.disabled = false; btn.textContent = '✨ 產生 AI 文字摘要';
+  }
+}
+let S_focusHours = 18;
+function focusItemEl(c, rank) {
+  const bits = [];
+  bits.push(h('span', { class: 'tag' }, c.source_count + ' 個來源：' + c.sources.join('、')));
+  bits.push(h('span', { class: 'tag' }, '最高重要度 ' + c.max_importance));
+  if (c.institution_bullish) bits.push(h('span', { class: 'sent up' }, '✓ 法人正面提及'));
+  if (c.kw_pos || c.kw_neg) bits.push(h('span', { class: 'tag' }, '多方' + c.kw_pos + ' / 空方' + c.kw_neg));
+  if (!c.tracked) bits.push(h('span', { class: 'neutral', title: '不在你的關注清單裡，是從標題的股票代碼辨識出來的' }, '清單外'));
+  return h('article', { class: 'row' },
+    h('div', { class: 'time' }, h('span', { class: 'hm' }, '#' + rank), h('span', { class: 'rel' }, '分數 ' + c.score)),
+    h('div', { class: 'body' },
+      h('div', { class: 'title' }, c.name),
+      h('div', { class: 'meta' }, bits),
+      h('ul', { class: 'dups', style: 'margin-top:4px' }, c.titles.map(t => h('li', {}, t)))));
+}
+async function loadFocusStocks() {
+  const root = $('#list'); root.replaceChildren(h('div', { class: 'empty' }, h('h2', {}, '載入中…')));
+  try {
+    const res = await api('/api/focus_stocks?hours=' + S_focusHours);
+    root.replaceChildren();
+    root.append(h('div', { class: 'digest-head' },
+      h('div', { class: 'digest-title' }, '盤前焦點股候選'),
+      h('select', { onchange: e => { S_focusHours = parseInt(e.target.value, 10); loadFocusStocks(); } },
+        [6, 12, 18, 24, 36, 48].map(hh => h('option', { value: hh, selected: hh === S_focusHours ? '' : null }, hh + ' 小時'))),
+    ));
+    root.append(h('p', { class: 'hint', style: 'margin:0 16px 12px' },
+      '這是「新聞關注度最集中」的候選清單，不是漲停預測——沒有任何新聞工具能可靠預測今天會漲停的股票。分數權重可以在「設定 → 一般設定」調整。僅供參考，不是投資建議。'));
+    if (!res.candidates.length) {
+      root.append(h('div', { class: 'empty' }, h('h2', {}, '這段時間沒有候選'), h('p', {}, '試著拉長時間範圍。')));
+    } else {
+      res.candidates.forEach((c, i) => root.append(focusItemEl(c, i + 1)));
+    }
+  } catch (e) {
+    root.replaceChildren(h('div', { class: 'empty' }, h('h2', {}, '載入失敗'), h('p', {}, e.message)));
+  }
+}
+async function pollStats() {
+  try {
+    const st = await api(statsUrl());
+    applyStats(st);
+  } catch (e) { $('#stText').textContent = '無法連線到本機服務，請確認終端機視窗還開著'; }
+  schedulePoll();
+}
+const statsUrl = () => '/api/stats?after_id=' + S.maxId + '&hours=' + S.hours;
+let pollTimer;
+function schedulePoll() {
+  clearTimeout(pollTimer);
+  const running = S.stats && S.stats.monitor.running;
+  pollTimer = setTimeout(pollStats, running ? 3000 : 20000);
+}
+
+const BUILD = '2026-10-08.3';
+function checkBuild(st) {
+  const w = $('#verWarn');
+  if (st.build === BUILD) { w.hidden = true; return; }
+  w.textContent = '程式檔案版本不一致：網頁是新的，但正在執行的程式是舊的（或相反）。請把新 zip 裡的檔案全部複製過去（config.json 和 news.db 除外），關掉黑色視窗後重新啟動。';
+  w.hidden = false;
+}
+function applyStats(st) {
+  checkBuild(st);
+  const wasRunning = S.stats && S.stats.monitor.running;
+  S.stats = st;
+  renderNav(); renderSources(); renderStatus(); updateTitle();
+  if (!S.refreshing && wasRunning && !st.monitor.running && !S.items.length) loadArticles(true);   // 第一次抓取完成
+  if (st.new && st.new.count > 0) {
+    const atTop = $('#scroll').scrollTop < 40 && !$('dialog[open]');
+    if (atTop && !S.loading) loadArticles(true);
+    else showBanner(st.new);
+    maybeNotify(st.new.top);
+  }
+}
+
+function showBanner(n) {
+  const b = $('#banner');
+  b.textContent = '有 ' + n.count + ' 則新消息' + (n.important ? '，其中 ' + n.important + ' 則重要' : '') + '，點此載入';
+  b.hidden = false;
+}
+
+function maybeNotify(top) {
+  if (!S.notify || !('Notification' in window) || Notification.permission !== 'granted') return;
+  for (const t of top || []) {
+    if (S.notified.has(t.id)) continue;
+    S.notified.add(t.id);
+    try { new Notification('重要新聞（' + t.importance + '/5）', { body: t.title }); } catch (e) {}
+  }
+}
+
+function updateTitle() {
+  const n = S.stats ? S.stats.unread : 0;
+  document.title = (n ? '(' + (n > 99 ? '99+' : n) + ') ' : '') + '交易新聞監測';
+}
+
+/* ------------------------------------------------------------ 側邊欄與狀態列 */
+function setView(v) {
+  if (v.kind === 'sent') { S.sent = v.value; v = { kind: 'all' }; }   // 多空新聞集錦：清空市場／標的範圍，套用多空篩選
+  if (v.kind === 'important') { S.important = true; v = { kind: 'all' }; }   // 重要消息來源：同上
+  S.view = v; LS.set('view', v);
+  $('#side').classList.remove('open');
+  renderNav();
+  if (v.kind === 'digest') { loadDigest(); return; }
+  if (v.kind === 'focus') { loadFocusStocks(); return; }
+  syncControls(); loadArticles(true, true);
+}
+function navItem(label, n, v) {
+  const cur = v.kind === 'sent' ? (S.view.kind === 'all' && S.sent === v.value)
+    : v.kind === 'important' ? (S.view.kind === 'all' && S.important)
+    : (S.view.kind === v.kind && S.view.value === v.value);
+  return h('button', { class: 'nav-i' + (n ? '' : ' zero'), 'aria-current': cur ? 'true' : null, onclick: () => setView(v) },
+    h('span', {}, label), h('span', { class: 'n' }, n > 99 ? '99+' : n));
+}
+function renderNav() {
+  const st = S.stats; if (!st) return;
+  const nav = $('#nav'); nav.replaceChildren();
+  nav.append(navItem('全部新聞', st.unread, { kind: 'all' }));
+  nav.append(h('button', { class: 'nav-i', 'aria-current': S.view.kind === 'digest' ? 'true' : null,
+    onclick: () => setView({ kind: 'digest' }) }, h('span', {}, '📋 每日摘要')));
+  nav.append(h('button', { class: 'nav-i', 'aria-current': S.view.kind === 'focus' ? 'true' : null,
+    onclick: () => setView({ kind: 'focus' }) }, h('span', {}, '🎯 盤前焦點股候選')));
+  if (st.markets.length) nav.append(h('div', { class: 'nav-h' }, '市場'));
+  st.markets.forEach(m => nav.append(navItem(m.name, m.unread, { kind: 'market', value: m.name })));
+  const sc = st.sent_counts || {};
+  nav.append(h('div', { class: 'nav-h' }, '多空新聞集錦'));
+  nav.append(navItem('多方新聞', sc.pos || 0, { kind: 'sent', value: 'pos' }));
+  nav.append(navItem('空方新聞', sc.neg || 0, { kind: 'sent', value: 'neg' }));
+  nav.append(navItem('中性新聞', sc.neutral || 0, { kind: 'sent', value: 'neutral' }));
+  nav.append(h('div', { class: 'nav-h' }, '重要消息來源'));
+  nav.append(navItem('經濟日報／工商時報／華爾街見聞／東方財富', st.important_count || 0, { kind: 'important' }));
+  if (st.watchlist.length) nav.append(h('div', { class: 'nav-h' }, '關注標的'));
+  st.watchlist.forEach(w => nav.append(navItem(w.name, w.unread, { kind: 'tag', value: w.name })));
+}
+function renderSources() {
+  const src = S.stats.sources, bad = src.filter(s => !s.ok).length;
+  $('#srcDot').className = 'dot ' + (src.length ? (bad ? 'bad' : 'ok') : '');
+  $('#srcText').textContent = src.length ? (bad ? bad + ' 個來源抓取失敗' : src.length + ' 個來源運作正常') : '來源狀態';
+}
+function scopeText() {
+  const base = S.view.kind === 'market' || S.view.kind === 'tag' ? S.view.value : '';
+  const sentLabel = { pos: '多方', neg: '空方', neutral: '中性' }[S.sent] || '';
+  if (!sentLabel) return { text: '', title: '' };                  // 沒開多空篩選：不特別顯示，跟以前一樣
+  if (!base) return { text: sentLabel + '新聞（全站）', title: '目前顯示全站所有標的裡屬於' + sentLabel + '的新聞，沒有限定任何標的或市場' };
+  return { text: base + ' + ' + sentLabel, title: '目前疊加了篩選：只看「' + base + '」裡屬於' + sentLabel + '的新聞，不是全站的' + sentLabel + '新聞。想看全站範圍，請改點左側「多空新聞集錦」裡的項目' };
+}
+function renderSrcFilter() {
+  const row = $('#srcFilterRow');
+  const counts = (S.stats && S.stats.important_sources) || {};
+  const names = Object.keys(counts);
+  if (!S.important || S.view.kind !== 'all' || !names.length) { row.hidden = true; return; }
+  row.hidden = false;
+  row.replaceChildren(h('span', { class: 'srclabel' }, '只看來源：'),
+    ...names.map(n => h('button', {
+      class: 'srcchip', 'aria-pressed': String(!S.importantExclude.has(n)),
+      title: (S.importantExclude.has(n) ? '點一下顯示「' : '點一下隱藏「') + n + '」',
+      onclick: () => {
+        if (S.importantExclude.has(n)) S.importantExclude.delete(n); else S.importantExclude.add(n);
+        renderSrcFilter(); loadArticles(true, true);
+      }
+    }, n.replace('（經 Google 新聞）', '') + '　' + counts[n])));
+}
+function renderStatus() {
+  const sc = $('#scopeLabel'); const t = scopeText();
+  sc.textContent = t.text; sc.title = t.title; sc.hidden = !t.text;
+  renderSrcFilter();
+  const m = S.stats.monitor, el = $('#stText');
+  const btn = $('#btnRefresh');
+  if (m.rescoring) { el.textContent = '正在依設定重新分類新聞…'; }
+  else if (m.running) { el.textContent = '正在抓取新聞…'; }
+  else if (!m.last_end) { el.textContent = '尚未完成第一次抓取'; }
+  else {
+    const mins = Math.max(0, Math.round((m.next_run - S.stats.now) / 60));
+    el.textContent = '上次更新 ' + new Date(m.last_end * 1000).toLocaleTimeString('zh-TW', { hour12: false }) +
+      (mins ? '，約 ' + mins + ' 分鐘後再更新' : '') + '，顯示 ' + S.items.length + ' / ' + S.total + ' 則';
+  }
+  btn.replaceChildren(...(m.running || S.refreshing ? [h('span', { class: 'spin' }), '更新中'] : ['立即更新']));
+  btn.disabled = !!(m.running || S.refreshing);
+  $('#btnNotify').textContent = '桌面通知：' + (S.notify ? '開' : '關');
+}
+
+/* ------------------------------------------------------------ 列表 */
+function rowClass(a, i) {
+  return 'row' + (S.img && a.images && a.images.length ? ' hasimg' : '') + ' imp' + a.importance + (a.read ? ' read' : '') + (a.starred ? ' starred' : '') + (i === S.sel ? ' sel' : '');
+}
+function metaEl(a) {
+  const bits = [h('span', { class: 'src' }, a.source)];
+  if (a.official) bits.push(h('span', { class: 'official', title: '官方公告來源' }, '官方'));
+  if (a.important) bits.push(h('span', { class: 'official', title: '重要消息來源（經濟日報／工商時報／華爾街見聞／東方財富網），不受多方／空方／中性關鍵詞限制' }, '重要'));
+  a.tags.forEach(t => bits.push(h('button', { class: 'tag', title: '只看「' + t + '」', onclick: () => setView({ kind: 'tag', value: t }) }, t)));
+  if (a.signals && a.signals.length) {
+    a.signals.slice(0, 4).forEach(g => bits.push(h('span', {
+      class: 'sent ' + (g.d > 0 ? 'up' : 'down'),
+      title: '依你設定的「板塊影響規則」或該標的的多空關鍵字判斷，僅供參考，不是投資建議' },
+      (g.d > 0 ? '▲ ' : '▼ ') + g.s + (g.d > 0 ? '利多' : '利空'))));
+    if (a.signals.length > 4) bits.push(h('span', { class: 'neutral', title: a.signals.slice(4).map(g => g.s + (g.d > 0 ? '利多' : '利空')).join('、') }, '+' + (a.signals.length - 4)));
+  }
+  if (a.neutral) bits.push(h('span', { class: 'neutral', title: '標題含資本支出／擴產等中性關鍵字，不代表多空方向' }, '中性'));
+  if (a.dups.length) bits.push(h('button', { class: 'dupbtn', 'aria-expanded': String(S.expanded.has(a.id)), onclick: () => toggleDups(a) }, '另有 ' + a.dups.length + ' 則相同報導'));
+  return h('div', { class: 'meta' }, bits);
+}
+function dupList(a) {
+  return h('ul', { class: 'dups' }, a.dups.map(d => h('li', {},
+    h('span', { class: 'hm' }, hm(d.published)),
+    h('a', { href: safeHref(d.url), target: '_blank', rel: 'noopener noreferrer' }, d.title),
+    h('span', { class: 'src' }, d.source))));
+}
+function thumbEl(a) {
+  const im = a.images[0];
+  return h('button', { class: 'thumb', title: '點一下放大' + (im.cap ? '：' + im.cap : ''), onclick: () => openImages(a) },
+    h('img', { src: im.src, alt: im.cap || '表格圖表', loading: 'lazy', referrerpolicy: 'no-referrer', onerror: e => {
+      const row = e.target.closest('.row'); e.target.closest('.thumb').remove(); if (row) row.classList.remove('hasimg');
+      S.imgFail++; refreshImgStat();
+    } }),
+    a.images.length > 1 ? h('span', { class: 'more' }, '+' + (a.images.length - 1)) : null);
+}
+function openImages(a) {
+  const body = $('#lbBody'); body.replaceChildren();
+  const t = $('#lbTitle'); t.textContent = a.title; t.href = safeHref(a.url);
+  a.images.forEach(im => body.append(h('figure', { class: 'lb-fig' },
+    h('img', { src: im.full || im.src, alt: im.cap || '', referrerpolicy: 'no-referrer' }),
+    im.cap ? h('figcaption', {}, im.cap) : null,
+    h('a', { href: safeHref(im.full || im.src), target: '_blank', rel: 'noopener noreferrer' }, '開啟原圖'))));
+  $('#dlgImg').showModal();
+}
+function rowEl(a, i) {
+  const open = () => { if (!a.read) setRead(a, true); };
+  return h('article', { class: rowClass(a, i), dataset: { id: a.id } },
+    h('div', { class: 'time', title: '重要度 ' + a.importance + '/5' },
+      h('span', { class: 'hm' }, hm(a.published)), h('span', { class: 'rel', dataset: { ts: a.published } }, rel(a.published)),
+      h('span', { class: 'sr' }, '重要度 ' + a.importance)),
+    S.img && a.images && a.images.length ? thumbEl(a) : null,
+    h('div', { class: 'body' },
+      h('a', { class: 'title', href: safeHref(a.url), target: '_blank', rel: 'noopener noreferrer', onclick: open, onauxclick: open }, a.title),
+      S.tr && a.title_zh ? h('div', { class: 'zh' }, a.title_zh) : null,
+      metaEl(a),
+      S.showSummary && a.summary ? h('p', { class: 'sum' }, a.summary) : null,
+      S.expanded.has(a.id) ? dupList(a) : null),
+    h('div', { class: 'acts' },
+      h('button', { class: 'ic' + (a.starred ? ' on' : ''), title: a.starred ? '取消星號 (s)' : '加上星號 (s)', 'aria-label': '星號', onclick: () => setStar(a, !a.starred) }, a.starred ? '★' : '☆'),
+      h('button', { class: 'ic', title: a.read ? '標為未讀 (m)' : '標為已讀 (m)', 'aria-label': '已讀', onclick: () => setRead(a, !a.read) }, a.read ? '↺' : '✓')));
+}
+function replaceRow(a) {
+  const i = S.items.indexOf(a), old = $('.row[data-id="' + a.id + '"]');
+  if (old && i >= 0) old.replaceWith(rowEl(a, i));
+}
+function renderList() {
+  const sc = $('#scroll'), keep = sc.scrollTop;
+  const root = $('#list'); root.replaceChildren();
+  const more = $('#more');
+  if (!S.items.length) {
+    root.append(emptyState()); more.hidden = true; renderStatus_(); return;
+  }
+  let last = null;
+  S.items.forEach((a, i) => {
+    if (S.sort === 'time') {
+      const g = groupLabel(a.published);
+      if (g !== last) { root.append(h('div', { class: 'grp' }, g)); last = g; }
+    }
+    root.append(rowEl(a, i));
+  });
+  more.hidden = S.items.length >= S.total;
+  translateVisible();
+  enrichVisible();
+  more.replaceChildren(h('button', { class: 'btn', onclick: () => loadArticles(false) }, '載入更多（還有 ' + (S.total - S.items.length) + ' 則）'));
+  sc.scrollTop = keep;   // 重畫列表不該把使用者拉回頂端
+  renderStatus_();
+}
+function renderStatus_() { if (S.stats) renderStatus(); }
+function emptyState() {
+  const m = S.stats && S.stats.monitor;
+  if (m && (m.running || !m.last_end) && !hasFilters())
+    return h('div', { class: 'empty' }, h('h2', {}, '正在第一次抓取新聞'), h('p', {}, '通常需要 10 到 30 秒，完成後會自動顯示。'));
+  if (hasFilters())
+    return h('div', { class: 'empty' }, h('h2', {}, '沒有符合條件的新聞'), h('p', {}, '試著放寬時間範圍、降低重要度門檻，或清除篩選。'),
+      h('button', { class: 'btn', onclick: clearFilters }, '清除篩選'));
+  const srcs = S.stats ? S.stats.sources : [];
+  if (srcs.length && srcs.every(x => !x.ok))
+    return h('div', { class: 'empty' }, h('h2', {}, '所有來源都抓取失敗'),
+      h('p', {}, '最常見的原因是這台電腦目前沒有連上網路（或被防火牆、VPN 擋住）。確認可以上網後，按「立即更新」再試一次。各來源的失敗原因可以在「來源狀態」查看。'),
+      h('button', { class: 'btn', onclick: openSources }, '查看來源狀態'));
+  return h('div', { class: 'empty' }, h('h2', {}, '目前沒有新聞'),
+    h('p', {}, '可能是關注清單的關鍵字太少，或來源抓取失敗。先看看「來源狀態」，再到「設定」調整關注清單。'),
+    h('button', { class: 'btn', onclick: openSources }, '查看來源狀態'));
+}
+function clearFilters() {
+  S.q = ''; S.minImp = 1; S.unread = false; S.starred = false; S.sent = ''; S.important = false; S.importantExclude.clear(); S.view = { kind: 'all' };
+  $('#q').value = ''; syncControls(); loadArticles(true, true); renderNav(); pollStats();
+}
+function toggleDups(a) {
+  if (S.expanded.has(a.id)) S.expanded.delete(a.id); else S.expanded.add(a.id);
+  replaceRow(a);
+}
+
+/* ------------------------------------------------------------ 動作 */
+async function act(payload) { return api('/api/action', payload); }
+async function setRead(a, val) {
+  a.read = val; replaceRow(a);
+  try { await act({ action: val ? 'read' : 'unread', ids: [a.id] }); refreshCountsSoon(); }
+  catch (e) { a.read = !val; replaceRow(a); toast('操作失敗：' + e.message, true); }
+}
+async function setStar(a, val) {
+  a.starred = val; replaceRow(a);
+  try { await act({ action: val ? 'star' : 'unstar', ids: [a.id] }); }
+  catch (e) { a.starred = !val; replaceRow(a); toast('操作失敗：' + e.message, true); }
+}
+let countsTimer;
+function refreshCountsSoon() { clearTimeout(countsTimer); countsTimer = setTimeout(pollStats, 600); }
+
+async function readAll() {
+  if (!confirm('把目前篩選條件下的所有未讀新聞標為已讀？')) return;
+  try {
+    const f = { hours: S.hours, min_imp: S.minImp, q: S.q, starred: S.starred, sent: S.sent, important: S.important };
+    if (S.view.kind === 'market') f.market = S.view.value;
+    if (S.view.kind === 'tag') f.tag = S.view.value;
+    const srcSel = selectedImportantSources();
+    if (srcSel) f.sources = srcSel;
+    const r = await act({ action: 'read_all', filter: f });
+    toast('已標記 ' + r.changed + ' 則為已讀');
+    await pollStats(); loadArticles(true);
+  } catch (e) { toast('操作失敗：' + e.message, true); }
+}
+
+async function refreshNow() {
+  if (S.refreshing || (S.stats && S.stats.monitor.running)) return;
+  S.refreshing = true; renderStatus();
+  const startedAt = S.stats ? S.stats.monitor.last_end : 0;
+  try {
+    await api('/api/refresh', {});
+    for (let i = 0; i < 60; i++) {
+      await new Promise(r => setTimeout(r, 1500));
+      const st = await api(statsUrl());
+      S.stats = st;
+      if (!st.monitor.running && st.monitor.last_end > startedAt) break;
+    }
+    S.refreshing = false;
+    await pollStats(); await loadArticles(true);
+    toast(S.stats.monitor.last_summary || '更新完成');
+  } catch (e) { toast('更新失敗：' + e.message, true); }
+  S.refreshing = false; renderStatus();
+}
+
+/* ------------------------------------------------------------ 圖表預覽（抓文章頁） */
+function setImgStat(text, bad) {
+  const el = $('#imgStat'); el.textContent = text || ''; el.className = 'trstat' + (bad ? ' bad' : '');
+}
+function refreshImgStat() {
+  if (S.imgFail) setImgStat('⚠ ' + S.imgFail + ' 張圖被對方網站擋下，無法直接顯示', true); else setImgStat('');
+}
+async function enrichVisible() {
+  if (!S.img || S.enBusy || Date.now() < S.enPause) return;
+  const todo = S.items.filter(a => a.images === null && !S.enDone.has(a.id)).slice(0, 12);
+  if (!todo.length) return;
+  S.enBusy = true; setImgStat('抓取圖表預覽中…');
+  try {
+    const r = await api('/api/enrich', { ids: todo.map(a => a.id) });
+    (r.done || []).forEach(id => S.enDone.add(id));
+    for (const a of S.items) {
+      const it = r.items && r.items[a.id];
+      if (!it) continue;
+      a.images = it.images;
+      if (it.summary && !a.summary) a.summary = it.summary;
+      replaceRow(a);
+    }
+    if (r.error === 'disabled') { S.enPause = Infinity; setImgStat('圖表預覽已在 config.json 關閉'); }
+    else if (r.error) {
+      S.enPause = Date.now() + Math.max(30, r.retry_after || 120) * 1000;
+      setImgStat('⚠ 圖表預覽暫時無法使用：' + r.error, true);
+    } else {
+      if (r.retry_after) S.enPause = Date.now() + r.retry_after * 1000;
+      refreshImgStat();
+    }
+  } catch (e) {
+    S.enPause = Date.now() + 120000;
+    setImgStat(e.message === 'not found'
+      ? '⚠ 執行中的程式不支援圖表預覽（還是舊版）。請更新全部檔案並重新啟動'
+      : '⚠ 圖表預覽請求失敗：' + e.message, true);
+  }
+  S.enBusy = false;
+  if (Date.now() >= S.enPause) setTimeout(enrichVisible, 300);
+  else if (S.enPause !== Infinity) setTimeout(enrichVisible, S.enPause - Date.now() + 500);
+}
+
+/* ------------------------------------------------------------ 英文標題翻譯 */
+const looksEnglish = t => {
+  const letters = (t.match(/[A-Za-z]/g) || []).length, cjk = (t.match(/[\u3400-\u9fff]/g) || []).length;
+  return cjk < 2 && letters >= 8 && letters / Math.max(1, t.replace(/\s/g, '').length) >= 0.5;
+};
+function patchZh(a) {
+  const row = $('.row[data-id="' + a.id + '"]');
+  if (!row || row.querySelector('.zh')) return;
+  const title = row.querySelector('.title');
+  if (title) title.after(h('div', { class: 'zh' }, a.title_zh));
+}
+function setTrStat(text, bad) {
+  const el = $('#trStat'); el.textContent = text || ''; el.className = 'trstat' + (bad ? ' bad' : '');
+}
+async function translateVisible() {
+  if (!S.tr || S.trBusy || Date.now() < S.trPause) return;
+  const todo = S.items.filter(a => !a.title_zh && !S.trDone.has(a.id) && looksEnglish(a.title)).slice(0, 30);
+  if (!todo.length) return;
+  S.trBusy = true;
+  setTrStat('翻譯中…');
+  try {
+    const r = await api('/api/translate', { ids: todo.map(a => a.id) });
+    (r.done || []).forEach(id => S.trDone.add(id));
+    for (const a of S.items) if (r.zh && r.zh[a.id]) { a.title_zh = r.zh[a.id]; patchZh(a); }
+    if (r.error === 'disabled') { S.trPause = Infinity; setTrStat('翻譯功能已在 config.json 關閉'); }
+    else if (r.error) {
+      S.trPause = Date.now() + Math.max(30, r.retry_after || 120) * 1000;
+      setTrStat('⚠ 翻譯暫時無法使用：' + r.error + '（約 ' + Math.ceil(Math.max(30, r.retry_after || 120) / 60) + ' 分鐘後自動重試）', true);
+    } else {
+      if (r.retry_after) S.trPause = Date.now() + r.retry_after * 1000;
+      setTrStat('');
+    }
+  } catch (e) {
+    S.trPause = Date.now() + 120000;
+    setTrStat(e.message === 'not found'
+      ? '⚠ 執行中的程式不支援翻譯（還是舊版）。請更新全部檔案並重新啟動'
+      : '⚠ 翻譯請求失敗：' + e.message, true);
+  }
+  S.trBusy = false;
+  if (Date.now() >= S.trPause) setTimeout(translateVisible, 300);
+  else if (S.trPause !== Infinity) setTimeout(translateVisible, S.trPause - Date.now() + 500);
+}
+
+/* ------------------------------------------------------------ 鍵盤 */
+function moveSel(d) {
+  if (!S.items.length) return;
+  const n = Math.max(0, Math.min(S.items.length - 1, (S.sel < 0 ? (d > 0 ? 0 : 0) : S.sel + d)));
+  $$('.row.sel').forEach(r => r.classList.remove('sel'));
+  S.sel = n;
+  const r = $$('.row')[n]; if (r) { r.classList.add('sel'); r.scrollIntoView({ block: 'nearest' }); }
+}
+document.addEventListener('keydown', e => {
+  const t = e.target;
+  if (t.matches && t.matches('input, textarea, select')) { if (e.key === 'Escape') t.blur(); return; }
+  if (e.ctrlKey || e.metaKey || e.altKey || $('dialog[open]')) return;
+  const a = S.items[S.sel];
+  switch (e.key) {
+    case 'j': moveSel(1); break;
+    case 'k': moveSel(-1); break;
+    case 'o': case 'Enter': if (a) { window.open(safeHref(a.url), '_blank', 'noopener'); if (!a.read) setRead(a, true); } break;
+    case 's': if (a) setStar(a, !a.starred); break;
+    case 'm': if (a) setRead(a, !a.read); break;
+    case 'r': refreshNow(); break;
+    case '/': e.preventDefault(); $('#q').focus(); break;
+    default: return;
+  }
+});
+
+/* ------------------------------------------------------------ 來源狀態對話框 */
+function openSources() {
+  const body = $('#srcBody'); body.replaceChildren();
+  const src = S.stats ? S.stats.sources : [];
+  const bad = src.filter(s => !s.ok).length;
+  body.append(h('p', { class: 'hint' }, src.length
+    ? src.length + ' 個來源中，' + (bad ? bad + ' 個最近一次抓取失敗。失敗不會影響其他來源；網址已失效的可以到「設定 > 新聞來源」停用。' : '全部正常。')
+    : '還沒有抓取紀錄。'));
+  src.forEach(s => body.append(h('div', { class: 'st-row' },
+    h('span', { class: 'dot ' + (s.ok ? 'ok' : 'bad') }),
+    h('span', {}, s.name),
+    h('span', { class: 'm' }, s.last_ok ? '上次成功：' + new Date(s.last_ok * 1000).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '尚未成功'),
+    h('span', { class: 'm' }, s.ok ? '+' + s.last_count : ''),
+    s.ok ? null : h('span', { class: 'err' }, s.error || '未知錯誤'))));
+  $('#dlgSources').showModal();
+}
+
+/* ------------------------------------------------------------ 設定對話框 */
+let draft = null, tab = 'watch';
+const MARKETS = ['台股', '美股', '加密貨幣', '期貨/外匯', '總經'];
+const gToStr = g => g === 'auto' ? 'auto' : (g === false ? 'off' : (Array.isArray(g) ? [...g].sort().join('+') : 'auto'));
+const strToG = s => s === 'auto' ? 'auto' : (s === 'off' ? false : s.split('+'));
+const splitKw = s => s.split(/[,\n，、;；]+/).map(x => x.trim()).filter(Boolean);
+
+function field(label, control) { return h('label', { class: 'field' }, h('span', {}, label), control); }
+function select(opts, cur, onchange) {
+  const el = h('select', { onchange: e => onchange(e.target.value) }, opts.map(([v, t]) => h('option', { value: v }, t)));
+  el.value = cur; return el;
+}
+
+function watchPane() {
+  const pane = h('div', {});
+  pane.append(h('p', { class: 'hint' }, '每個標的用幾個關鍵字描述（股票代號、中英文名稱、別名都可以）。系統會用這些關鍵字自動搜尋 Google 新聞，並從所有來源裡挑出相符的新聞。全大寫的英文（如 NVDA、CPI）會區分大小寫。'));
+  pane.append(h('datalist', { id: 'mk' }, MARKETS.map(m => h('option', { value: m }))));
+  draft.watchlist.forEach((it, idx) => pane.append(h('div', { class: 'wl-row' },
+    field('名稱', h('input', { value: it.name, oninput: e => { it.name = e.target.value.trim(); } })),
+    field('市場', h('input', { list: 'mk', value: it.market, oninput: e => { it.market = e.target.value.trim(); } })),
+    field('關鍵字（用逗號分隔）', h('textarea', { rows: 2, oninput: e => { it.keywords = splitKw(e.target.value); } }, it.keywords.join('，'))),
+    field('Google 新聞搜尋', select([['auto', '自動（依市場）'], ['tw', '台灣版'], ['us', '美國版'], ['tw+us', '台灣版加美國版'], ['off', '不使用']], gToStr(it.google), v => { it.google = strToG(v); })),
+    h('label', { class: 'chk', title: '標題有這個標的、又出現多方／空方關鍵字時，標示「○○利多／利空」。匯率、期貨、總經這類方向不明確的建議關掉' },
+      h('input', { type: 'checkbox', checked: it.direction !== false, onchange: e => { it.direction = e.target.checked; } }), '多空標示'),
+    h('label', { class: 'chk', title: '商品類（黃金、原油…）：標題或摘要還要出現價格、漲跌、期貨、避險、Fed 這類行情用詞才算相關，用來擋掉「黃金周」這種別的意思。行情用詞可在「一般設定」修改' },
+      h('input', { type: 'checkbox', checked: !!it.commodity, onchange: e => { it.commodity = e.target.checked; } }), '商品'),
+    h('label', { class: 'chk', title: '法人報告類（大摩、小摩…）：標題還要出現目標價、評等、報告這類字才算相關，用來擋掉持股異動揭露、機構自己的消息。這類用詞可在「一般設定」修改' },
+      h('input', { type: 'checkbox', checked: !!it.institution, onchange: e => { it.institution = e.target.checked; } }), '法人報告'),
+    h('label', { class: 'chk', title: '容易撞名的人物（姓氏是常見英文姓，容易跟運動員、演藝人員同名）：標題還要出現 Fed、聯準會、利率這類詞才算相關。這類用詞可在「一般設定」修改' },
+      h('input', { type: 'checkbox', checked: !!it.person, onchange: e => { it.person = e.target.checked; } }), '易撞名人物'),
+    h('label', { class: 'chk', title: '重點標的的新聞重要度 +1' }, h('input', { type: 'checkbox', checked: it.boost > 0, onchange: e => { it.boost = e.target.checked ? 1 : 0; } }), '重點標的'),
+    h('button', { class: 'btn danger', onclick: () => { draft.watchlist.splice(idx, 1); renderSettings(); } }, '刪除'))));
+  pane.append(h('button', { class: 'btn add', onclick: () => { draft.watchlist.push({ name: '', market: '台股', keywords: [], google: 'auto', boost: 0, direction: true, commodity: false, institution: false, person: false }); renderSettings(); } }, '新增標的'));
+  return pane;
+}
+
+function feedsPane() {
+  const pane = h('div', {});
+  pane.append(h('p', { class: 'hint' }, '「收錄全部」：勾選後這個來源的每一則新聞都會收進來（適合幣圈媒體、聯準會公告這類本來就相關的來源）；沒勾選時，只收錄符合關注清單關鍵字的新聞。Google 新聞搜尋是依關注清單自動產生的，不會出現在這裡。'));
+  pane.append(h('datalist', { id: 'mk2' }, MARKETS.map(m => h('option', { value: m }))));
+  draft.feeds.forEach((f, idx) => pane.append(h('div', { class: 'fd-row' },
+    h('label', { class: 'chk' }, h('input', { type: 'checkbox', checked: f.enabled, onchange: e => { f.enabled = e.target.checked; } }), '啟用'),
+    field('名稱', h('input', { value: f.name, oninput: e => { f.name = e.target.value; } })),
+    field('市場', h('input', { list: 'mk2', value: f.market, oninput: e => { f.market = e.target.value.trim(); } })),
+    h('label', { class: 'chk' }, h('input', { type: 'checkbox', checked: f.keep_all, onchange: e => { f.keep_all = e.target.checked; } }), '收錄全部'),
+    h('span', { class: 'url', title: f.url }, f.url),
+    h('button', { class: 'btn danger', onclick: () => { draft.feeds.splice(idx, 1); renderSettings(); } }, '刪除'))));
+
+  const nf = { name: '', url: '', market: '', keep_all: false };
+  pane.append(h('div', { class: 'fd-row add', style: 'grid-template-columns: 190px minmax(200px,1fr) 100px auto auto' },
+    field('新增 RSS 來源：名稱', h('input', { oninput: e => { nf.name = e.target.value; } })),
+    field('RSS 網址（https://…）', h('input', { oninput: e => { nf.url = e.target.value.trim(); } })),
+    field('市場', h('input', { list: 'mk2', oninput: e => { nf.market = e.target.value.trim(); } })),
+    h('label', { class: 'chk' }, h('input', { type: 'checkbox', onchange: e => { nf.keep_all = e.target.checked; } }), '收錄全部'),
+    h('button', { class: 'btn', onclick: () => {
+      if (!/^https?:\/\//i.test(nf.url)) { $('#setErr').textContent = '請輸入以 http:// 或 https:// 開頭的網址'; return; }
+      draft.feeds.push({ name: nf.name || nf.url, url: nf.url, type: 'rss', market: nf.market, keep_all: nf.keep_all, official: false, enabled: true });
+      $('#setErr').textContent = ''; renderSettings();
+    } }, '加入')));
+  return pane;
+}
+
+function genPane() {
+  const s = draft.settings;
+  const iw = Object.entries(draft.importance_words).map(([w, n]) => w + ' ' + n).join('\n');
+  return h('div', { class: 'gen' },
+    field('更新間隔（分鐘）', h('input', { type: 'number', min: 1, max: 120, value: s.refresh_minutes, oninput: e => { s.refresh_minutes = +e.target.value || 5; } })),
+    field('新聞保留天數（有加星號的不會刪除）', h('input', { type: 'number', min: 1, max: 365, value: s.keep_days, oninput: e => { s.keep_days = +e.target.value || 14; } })),
+    h('label', { class: 'chk' }, h('input', { type: 'checkbox', checked: s.sentiment_hint, onchange: e => { s.sentiment_hint = e.target.checked; } }), '標示利多／利空（總開關；一律要有對象，僅供參考）'),
+    h('label', { class: 'chk', title: '開啟後，下面的「多方關鍵詞」每個字都會主動搜尋 Google 新聞，不限定關注清單裡的標的，抓到就收（不用先比對到標的）。關掉就只分類已經收進來的新聞，不主動搜尋。這個會增加抓取量' },
+      h('input', { type: 'checkbox', checked: s.positive_word_search, onchange: e => { s.positive_word_search = e.target.checked; } }), '多方關鍵詞主動搜尋新聞（不限定關注標的，量會變大）'),
+    h('label', { class: 'chk', title: '開啟後，下面的「空方關鍵詞」每個字都會主動搜尋 Google 新聞，不限定關注清單裡的標的，抓到就收（不用先比對到標的）。關掉就只分類已經收進來的新聞，不主動搜尋。這個會增加抓取量' },
+      h('input', { type: 'checkbox', checked: s.negative_word_search, onchange: e => { s.negative_word_search = e.target.checked; } }), '空方關鍵詞主動搜尋新聞（不限定關注標的，量會變大）'),
+    h('label', { class: 'chk', title: '開啟後，下面的「中性關鍵詞」每個字都會主動搜尋 Google 新聞，不限定關注清單裡的標的，抓到就收（不用先比對到標的）。關掉就只分類已經收進來的新聞，不主動搜尋。這個會增加抓取量' },
+      h('input', { type: 'checkbox', checked: s.neutral_word_search, onchange: e => { s.neutral_word_search = e.target.checked; } }), '中性關鍵詞主動搜尋新聞（不限定關注標的，量會變大）'),
+    h('div', { class: 'field' },
+      h('span', {}, '盤前焦點股候選名單的評分權重：分數 = 來源數×source + 最高重要度×importance + (有法人正面提及則加 institution) + 多空淨值×net_signal'),
+      h('span', { class: 'hint', style: 'margin:2px 0 6px' }, '這是觀察名單，不是漲停預測，權重怎麼調都不會變成預測。'),
+      h('div', { style: 'display:flex; gap:10px; flex-wrap:wrap' },
+        ['source', 'importance', 'institution', 'net_signal'].map(k => h('label', { class: 'chk' },
+          k + '：', h('input', { type: 'number', min: 0, max: 100, style: 'width:60px',
+            value: (s.focus_weights || {})[k],
+            oninput: e => { s.focus_weights = Object.assign({}, s.focus_weights, { [k]: parseInt(e.target.value, 10) || 0 }); } }))))),
+    h('div', { class: 'field' },
+      h('span', {}, 'AI 文字摘要：填入 API key 後，「每日摘要」畫面裡的「產生 AI 文字摘要」按鈕才能用'),
+      h('span', { class: 'hint', style: 'margin:2px 0 6px' }, '到 console.anthropic.com 申請 key。只有你自己按按鈕才會呼叫、才會產生費用，不會自動排程。key 存在你自己電腦的設定檔裡，明碼，請妥善保管這台電腦。'),
+      h('input', { type: 'password', placeholder: 'sk-ant-...', value: (s.ai_digest || {}).api_key || '',
+        style: 'width:100%; margin-bottom:6px',
+        oninput: e => { s.ai_digest = Object.assign({}, s.ai_digest, { api_key: e.target.value }); } }),
+      h('input', { type: 'text', placeholder: '模型名稱', value: (s.ai_digest || {}).model || 'claude-haiku-4-5-20251001',
+        style: 'width:100%',
+        oninput: e => { s.ai_digest = Object.assign({}, s.ai_digest, { model: e.target.value }); } })),
+    field('多方關鍵詞：標題有這些詞，這則新聞就會算進左側「多方新聞」集錦（純文字比對，跟下面的「XX利多／XX利空」標籤是分開的兩件事）（用逗號分隔）',
+      h('textarea', { rows: 3, spellcheck: 'false', oninput: e => { draft.positive_words = splitKw(e.target.value); } }, draft.positive_words.join('，'))),
+    field('空方關鍵詞：同上，標題有這些詞就算進「空方新聞」集錦（用逗號分隔）',
+      h('textarea', { rows: 3, spellcheck: 'false', oninput: e => { draft.negative_words = splitKw(e.target.value); } }, draft.negative_words.join('，'))),
+    field('中性關鍵詞：標題有這些詞就算進「中性新聞」集錦，只是額外標示話題性質，不影響利多／利空的判斷（用逗號分隔）',
+      h('textarea', { rows: 2, spellcheck: 'false', oninput: e => { draft.neutral_words = splitKw(e.target.value); } }, (draft.neutral_words || []).join('，'))),
+    h('div', { class: 'field' },
+      h('span', {}, '板塊影響規則：一行一條，寫成「主題詞 + 觸發詞 ! 排除詞 => 對象利多, 對象利空」'),
+      h('span', { class: 'hint', style: 'margin:2px 0 6px' }, '標題要同時有任一主題詞與任一觸發詞才成立；! 排除詞可省略（用來排除「暫緩降息」這類否定說法）；# 開頭是註解。有對象才會標示，例如「▲ 能源股利多　▼ 高科技利空」。預設規則只是依一般市場邏輯寫的草稿，請依你的判斷修改。'),
+      h('textarea', { rows: 12, wrap: 'off', spellcheck: 'false', style: 'font-size:13px', oninput: e => { draft.sector_rules = e.target.value.split('\n'); } }, (draft.sector_rules || []).join('\n'))),
+    h('div', { class: 'field' },
+      h('span', {}, '整篇文章直接排除：標題只要符合下面任一詞組，這則新聞完全不收進來（一行可以寫多個，用逗號分隔；# 開頭是註解）'),
+      h('span', { class: 'hint', style: 'margin:2px 0 6px' }, '用來擋掉盤中速報這類機械式產生、對交易沒有意義的價格快報。跟下面「非商品用法」不同：那個只是遮住某個詞不參與比對，這個是整篇丟掉，且不受來源「收錄全部」保護（只有加星號會保留）。改完存檔，資料庫裡已經收進來的同類新聞也會自動清掉。'),
+      h('textarea', { rows: 4, wrap: 'off', spellcheck: 'false', style: 'font-size:13px', oninput: e => { draft.title_exclude = e.target.value.split('\\n'); } }, (draft.title_exclude || []).join('\\n'))),
+    h('div', { class: 'field' },
+      h('span', {}, '非商品／非標的的用法：這些詞組會先被遮掉再比對（一行可以寫多個，用逗號分隔；# 開頭是註解）'),
+      h('span', { class: 'hint', style: 'margin:2px 0 6px' }, '例如「黃金周」「黃金交叉」不是金價，「橄欖油」不是原油，「apple pie」不是蘋果公司。發現新的雜訊，直接在最下面加一行就好。改完儲存後，最近保留期間內已經存在的雜訊新聞也會自動清掉（有加星號的不會刪）。'),
+      h('textarea', { rows: 10, wrap: 'off', spellcheck: 'false', style: 'font-size:13px', oninput: e => { draft.noise_phrases = e.target.value.split('\n'); } }, (draft.noise_phrases || []).join('\n'))),
+    field('商品情境詞：標成「商品」的標的（黃金、原油…），標題或摘要至少要出現其中一個才算相關（用逗號分隔）',
+      h('textarea', { rows: 4, spellcheck: 'false', oninput: e => { draft.commodity_context = splitKw(e.target.value); } }, (draft.commodity_context || []).join('，'))),
+    field('法人報告情境詞：市場是「法人報告」的標的（大摩、小摩…），標題要有其中一個才算相關，用來擋掉持股異動揭露、機構自己的消息（用逗號分隔）',
+      h('textarea', { rows: 4, spellcheck: 'false', oninput: e => { draft.institution_context = splitKw(e.target.value); } }, (draft.institution_context || []).join('，'))),
+    field('法人報告排除詞：標題有這些字，即使符合上面的情境詞也不收（陸股／港股相關內容，用逗號分隔）',
+      h('textarea', { rows: 3, spellcheck: 'false', oninput: e => { draft.institution_exclude = splitKw(e.target.value); } }, (draft.institution_exclude || []).join('，'))),
+    field('財經情境詞：多方／空方／中性關鍵詞「主動搜尋新聞」抓回來的文章，標題要有其中一個（或股票代碼）才留下，避免洗進體育、娛樂這類無關新聞（用逗號分隔）',
+      h('textarea', { rows: 4, spellcheck: 'false', oninput: e => { draft.finance_context = splitKw(e.target.value); } }, (draft.finance_context || []).join('，'))),
+    h('div', { class: 'field' },
+      h('span', {}, '來源排除：來源（媒體／出處名稱）符合下面任一名稱，這則新聞完全不收，無論標題是否命中財經情境詞或股票代碼（一行可以寫多個，用逗號分隔；# 開頭是註解）'),
+      h('span', { class: 'hint', style: 'margin:2px 0 6px' }, '用來擋掉娛樂、廣告／業配這類媒體——它們的標題常常剛好用到「缺貨」「供不應求」這種同時也是財經情境詞的通用詞，光看標題擋不掉，只能從來源本身排除。發現新的雜訊來源，直接在最下面加一行就好。'),
+      h('textarea', { rows: 3, wrap: 'off', spellcheck: 'false', style: 'font-size:13px', oninput: e => { draft.source_exclude = e.target.value.split('\\n'); } }, (draft.source_exclude || []).join('\\n'))),
+    h('div', { class: 'field' },
+      h('span', {}, '重要消息來源：來源（媒體／出處名稱）符合下面任一名稱，這則新聞不管有沒有比對到關注標的、板塊規則，也不管多方／空方／中性關鍵詞有沒有命中，一律收進來，並出現在左側「重要消息來源」集錦（一行可以寫多個，用逗號分隔；# 開頭是註解）'),
+      h('span', { class: 'hint', style: 'margin:2px 0 6px' }, '不用寫媒體全名，來源欄位裡有出現這個名稱就算數（例如寫「東方財富」就能同時比對「東方財富（快訊）」「東方財富（焦點新聞）」）。想追加其他媒體當重要消息來源，直接在最下面加一行就好。'),
+      h('textarea', { rows: 3, wrap: 'off', spellcheck: 'false', style: 'font-size:13px', oninput: e => { draft.important_sources = e.target.value.split('\\n'); } }, (draft.important_sources || []).join('\\n'))),
+    field('政經人物情境詞：標成「易撞名人物」的標的（Fed官員…），標題要有其中一個才算相關，用來擋掉跟運動員、演藝人員同名的無關新聞（用逗號分隔）',
+      h('textarea', { rows: 4, spellcheck: 'false', oninput: e => { draft.person_context = splitKw(e.target.value); } }, (draft.person_context || []).join('，'))),
+    field('重要度關鍵字：每行一個「詞 權重」，權重 1 到 3。標題或摘要出現這些詞，重要度會上升。',
+      h('textarea', { spellcheck: 'false', oninput: e => {
+        const o = {};
+        e.target.value.split('\n').forEach(line => {
+          const m = line.trim().match(/^(.+?)\s+([1-3])$/);
+          if (m) o[m[1].trim()] = +m[2];
+        });
+        draft.importance_words = o;
+      } }, iw)));
+}
+
+function renderSettings() {
+  $$('#setTabs button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.t === tab)));
+  const body = $('#setBody'), keep = body.scrollTop;
+  body.replaceChildren(tab === 'watch' ? watchPane() : tab === 'feeds' ? feedsPane() : genPane());
+  body.scrollTop = keep;
+}
+async function openSettings() {
+  try { draft = JSON.parse(JSON.stringify(await api('/api/config'))); }
+  catch (e) { toast('讀取設定失敗：' + e.message, true); return; }
+  tab = 'watch'; $('#setErr').textContent = ''; renderSettings(); $('#dlgSettings').showModal();
+}
+async function saveSettings() {
+  const btn = $('#setSave'); btn.disabled = true;
+  try {
+    await api('/api/config', draft);
+    $('#dlgSettings').close();
+    toast('已儲存，正在依新設定重新分類新聞…');
+    S.refreshing = true; renderStatus();
+    for (let i = 0; i < 60; i++) {          // 等重新分類真的做完，而不是猜一個固定秒數（資料多時會跑比較久）
+      await new Promise(r => setTimeout(r, 1000));
+      const st = await api(statsUrl());
+      S.stats = st;
+      if (!st.monitor.rescoring) break;
+    }
+    S.refreshing = false;
+    await pollStats(); await loadArticles(true);
+    toast('已依新設定重新分類完成');
+  } catch (e) { $('#setErr').textContent = '儲存失敗：' + e.message; }
+  btn.disabled = false; renderStatus();
+}
+
+/* ------------------------------------------------------------ 控制項 */
+function syncControls() {
+  $('#selHours').value = String(S.hours);
+  $('#selSort').value = S.sort;
+  $('#selSort').classList.toggle('sortwarn', S.sort !== 'time');
+  $('#fTr').checked = S.tr; $('#fImg').checked = S.img; $('#fUnread').checked = S.unread; $('#fStar').checked = S.starred; $('#fImportant').checked = S.important; $('#fMerge').checked = S.merge; $('#fSum').checked = S.showSummary;
+  $$('#segImp button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.v === S.minImp)));
+  $$('#segSent button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === S.sent)));
+  const th = document.documentElement.dataset.theme, ud = document.documentElement.dataset.updown;
+  $$('#segTheme button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === th)));
+  $$('#segUpdown button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === ud)));
+}
+function bind() {
+  let qt;
+  $('#q').addEventListener('input', e => { clearTimeout(qt); qt = setTimeout(() => { S.q = e.target.value.trim(); loadArticles(true, true); }, 250); });
+  $('#selHours').addEventListener('change', e => { S.hours = +e.target.value; LS.set('hours', S.hours); loadArticles(true, true); pollStats(); });
+  $('#selSort').addEventListener('change', e => { S.sort = e.target.value; LS.set('sort2', S.sort); syncControls(); loadArticles(true, true); });
+  $('#segImp').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.minImp = +b.dataset.v; LS.set('minImp', S.minImp); syncControls(); loadArticles(true, true); });
+  $('#segSent').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.sent = b.dataset.v; syncControls(); loadArticles(true, true); });
+  $('#fUnread').addEventListener('change', e => { S.unread = e.target.checked; LS.set('unread', S.unread); loadArticles(true, true); });
+  $('#fStar').addEventListener('change', e => { S.starred = e.target.checked; loadArticles(true, true); });
+  $('#fImportant').addEventListener('change', e => { S.important = e.target.checked; loadArticles(true, true); });
+  $('#fMerge').addEventListener('change', e => { S.merge = e.target.checked; LS.set('merge', S.merge); loadArticles(true, true); });
+  $('#fTr').addEventListener('change', e => { S.tr = e.target.checked; LS.set('tr', S.tr); if (!S.tr) setTrStat(''); renderList(); });
+  $('#fImg').addEventListener('change', e => { S.img = e.target.checked; LS.set('img', S.img); if (!S.img) setImgStat(''); renderList(); });
+  $('#lbClose').addEventListener('click', () => $('#dlgImg').close());
+  $('#dlgImg').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+  $('#fSum').addEventListener('change', e => { S.showSummary = e.target.checked; LS.set('sum2', S.showSummary); renderList(); });
+  $('#segTheme').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; document.documentElement.dataset.theme = b.dataset.v; LS.set('theme', b.dataset.v); syncControls(); });
+  $('#segUpdown').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; document.documentElement.dataset.updown = b.dataset.v; LS.set('updown', b.dataset.v); syncControls(); });
+  $('#btnRefresh').addEventListener('click', refreshNow);
+  $('#btnReadAll').addEventListener('click', readAll);
+  $('#btnSources').addEventListener('click', openSources);
+  $('#btnSettings').addEventListener('click', openSettings);
+  $('#btnMenu').addEventListener('click', () => $('#side').classList.toggle('open'));
+  $('#banner').addEventListener('click', () => loadArticles(true, true));
+  $('#srcClose').addEventListener('click', () => $('#dlgSources').close());
+  $('#setClose').addEventListener('click', () => $('#dlgSettings').close());
+  $('#setCancel').addEventListener('click', () => $('#dlgSettings').close());
+  $('#setSave').addEventListener('click', saveSettings);
+  $('#setTabs').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; tab = b.dataset.t; $('#setErr').textContent = ''; renderSettings(); });
+  $('#btnNotify').addEventListener('click', async () => {
+    if (!('Notification' in window)) { toast('這個瀏覽器不支援桌面通知', true); return; }
+    if (S.notify) { S.notify = false; LS.set('notify', false); renderStatus(); return; }
+    const p = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+    if (p === 'granted') { S.notify = true; LS.set('notify', true); toast('已開啟：出現重要度 4 以上的新聞時會通知你'); }
+    else toast('瀏覽器未允許通知，請到網址列旁的網站設定開啟', true);
+    renderStatus();
+  });
+  setInterval(() => $$('.rel[data-ts]').forEach(el => { el.textContent = rel(+el.dataset.ts); }), 60000);
+}
+
+/* ------------------------------------------------------------ 啟動 */
+(async function init() {
+  bind(); syncControls();
+  try {
+    S.stats = await api(statsUrl());
+    checkBuild(S.stats);
+    if (S.view.kind === 'market' && !S.stats.markets.some(m => m.name === S.view.value)) S.view = { kind: 'all' };
+    if (S.view.kind === 'tag' && !S.stats.watchlist.some(w => w.name === S.view.value)) S.view = { kind: 'all' };
+    renderNav(); renderSources(); renderStatus(); updateTitle();
+  } catch (e) { $('#stText').textContent = '無法連線到本機服務'; }
+  await loadArticles(true);
+  schedulePoll();
+})();
+})();
+</script>
+</body>
+</html>

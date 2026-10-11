@@ -1,0 +1,10 @@
+# 這些是你自己的資料，不是程式碼，永遠不要進 repo（也不會被 update.py 覆蓋，見該檔案開頭的說明）。
+config.json
+news.db
+news.db-wal
+news.db-shm
+
+__pycache__/
+*.pyc
+test_*.py
+.DS_Store
