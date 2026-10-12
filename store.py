@@ -294,12 +294,18 @@ class Store:
             w.append("instr(tags, ?) > 0")
             a.append(json.dumps(p["tag"], ensure_ascii=False))
         if p.get("source"):
-            w.append("source = ?")
-            a.append(p["source"])
+            # 不能只看代表這則（叢集的 primary）的 source 欄位：同一件事被好幾家媒體一起報，
+            # 去重時只有「最早那則」會當代表，其餘併入的重複報導雖然 UI 上展開「另有 N 則相同報導」
+            # 看得到，但原本這裡的篩選完全沒考慮到它們——某家來源的報導如果剛好跟別家幾乎同時、
+            # 又被判定為同一件事而併入別家代表之下，單獨篩這家來源時就會憑空消失，
+            # 即使它確實有被抓到、也確實有進資料庫。這裡額外比對叢集裡各則被併入報導自己的 source。
+            w.append("(source = ? OR id IN (SELECT dup_of FROM articles WHERE dup_of IS NOT NULL AND source = ?))")
+            a += [p["source"], p["source"]]
         if p.get("sources"):
             marks = ",".join("?" * len(p["sources"]))
-            w.append("source IN (%s)" % marks)
-            a += list(p["sources"])
+            w.append("(source IN (%s) OR id IN (SELECT dup_of FROM articles WHERE dup_of IS NOT NULL AND source IN (%s)))"
+                      % (marks, marks))
+            a += list(p["sources"]) * 2
         if p.get("min_imp", 1) > 1:
             w.append("importance >= ?")
             a.append(p["min_imp"])
@@ -510,11 +516,24 @@ class Store:
     def important_source_counts(self, since):
         """重要消息來源集錦裡，各個實際來源名稱（例如「經濟日報（經 Google 新聞）」「東方財富（焦點新聞）」）
         各自的未讀數，用來做「只看這幾個來源」的子篩選（設定 → 一般設定的「重要消息來源」是用來比對
-        關鍵字的粗略名稱，這裡回傳的是實際存在資料庫裡、可以直接拿來篩選的完整來源名稱）。"""
+        關鍵字的粗略名稱，這裡回傳的是實際存在資料庫裡、可以直接拿來篩選的完整來源名稱）。
+
+        跟 _where() 的「source／sources」篩選同一個道理：不能只算代表這則（叢集 primary）的來源，
+        還要把併入同一叢集、各自的 source 不同的重複報導也算進去，不然同一件事剛好也被別家媒體
+        先一步報導、因此被判定為重複併入別家代表之下的那些，這裡會完全漏算，點那個來源的徽章
+        篩選時也看不到。"""
         with self._tx() as c:
-            return {r[0]: r[1] for r in c.execute(
-                "SELECT source, COUNT(*) FROM articles WHERE dup_of IS NULL AND read = 0 "
-                "AND important = 1 AND published >= ? GROUP BY source ORDER BY COUNT(*) DESC", (since,))}
+            rows = c.execute(
+                "SELECT source FROM articles WHERE dup_of IS NULL AND read = 0 "
+                "AND important = 1 AND published >= ? "
+                "UNION ALL "
+                "SELECT d.source FROM articles d JOIN articles p ON d.dup_of = p.id "
+                "WHERE p.dup_of IS NULL AND p.read = 0 AND p.important = 1 AND p.published >= ?",
+                (since, since)).fetchall()
+            counts = {}
+            for r in rows:
+                counts[r[0]] = counts.get(r[0], 0) + 1
+            return dict(sorted(counts.items(), key=lambda kv: -kv[1]))
 
     # ------------------------------------------------------------ 重新評估多空標示
 
