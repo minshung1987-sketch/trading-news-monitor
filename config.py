@@ -118,7 +118,7 @@ DEFAULT_POSITIVE_WORDS = [
 
 DEFAULT_NEGATIVE_WORDS = [
     "看壞", "下修", "調降", "調低",
-    "檢調", "增資", "發債", "保守", "產能過剩", "供過於求", "搶單", "gdr",
+    "檢調", "羈押", "增資", "發債", "保守", "產能過剩", "供過於求", "搶單", "gdr",
     "處置", "買方市場",
 ]
 
@@ -377,6 +377,16 @@ DEFAULT_CONFIG = {
         # （涵蓋範圍最廣，混合台股、美股、總經、商品原物料），其他分類（深滬港股、基金新聞…）
         # 要另外加來源，網址把 a=MB010000 換成別的分類代碼即可。
         {"name": "MoneyDJ理財網", "url": "https://m.moneydj.com/newsList.aspx?a=MB010000", "type": "moneydj", "market": "總經", "keep_all": True, "official": False, "enabled": True},
+        # 富途牛牛「要聞」：官網沒有公開 RSS，但首頁改版後的頁面是 Nuxt.js 應用程式，實際資料是從它
+        # 自己的 JSON 接口來的（瀏覽器開發者工具的網路請求裡看得到），不用解析內嵌在頁面裡、
+        # 被壓縮過變數名稱的 Nuxt 狀態（那份很難穩定解析，一壓縮方式改版就會壞）。
+        # 這是「要聞」聚合了多家原始來源（金十數據、財聯社、智通財經APP、中信證券研究等）
+        # 混在一起的清單，所以每則新聞的 source 用它接口裡附的原始出處，不是整個寫死「富途牛牛」，
+        # 這樣才不會把其中混到的「華爾街見聞」稿件，跟既有的「華爾街見聞」來源分開計算、漏算重要消息來源。
+        # 接口回應裡有一個 honeyPotList 欄位（網址裡混了一個假的 id，點進去會暴露是程式在抓）：
+        # 解析器只讀 list，完全不碰 honeyPotList，見 fetcher.py 的 parse_futunn_headlines()。
+        # 標題是簡體字（原始出處大多是中國財經媒體）。
+        {"name": "富途牛牛（要聞）", "url": "https://news.futunn.com/news-site-api/main/get-market-list?size=30&isSupportWebp=true", "type": "futunn_headlines", "market": "總經", "keep_all": True, "official": False, "enabled": True},
     ],
     "importance_words": DEFAULT_IMPORTANCE_WORDS,
     "positive_words": DEFAULT_POSITIVE_WORDS,
@@ -554,10 +564,11 @@ def normalize(raw):
             # 華爾街見聞、東方財富的網址一律用專用解析器（讓使用者在設定畫面當成一般來源貼上就能用）
             # 已經明確指定過我們認得的類型（例如寫在預設清單裡的東方財富兩筆，同一個網址但類型不同）
             # 就照那個走；只有「沒指定」或還是通用的 rss 時，才用網址規律自動判斷。
-            "type": (f.get("type") if f.get("type") in ("twse_json", "wscn_json", "eastmoney_kx", "eastmoney_articles", "moneydj")
+            "type": (f.get("type") if f.get("type") in ("twse_json", "wscn_json", "eastmoney_kx", "eastmoney_articles", "moneydj", "futunn_headlines")
                     else "wscn_json" if re.match(r"^https?://api-one\.wallstcn\.com/", url, re.I)
                     else "eastmoney_kx" if re.match(r"^https?://(www\.)?eastmoney\.com/", url, re.I)
                     else "moneydj" if re.match(r"^https?://m\.moneydj\.com/", url, re.I)
+                    else "futunn_headlines" if re.match(r"^https?://news\.futunn\.com/news-site-api/", url, re.I)
                     else "rss"),
             "market": str(f.get("market", "")).strip(),
             "keep_all": bool(f.get("keep_all", False)),

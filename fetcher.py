@@ -373,6 +373,51 @@ def parse_wscn_json(data, default_source):
     return out
 
 
+# ---------------------------------------------------------------- 富途牛牛「要聞」（自家 JSON 接口）
+
+def parse_futunn_headlines(data, default_source):
+    """富途牛牛新聞頁「要聞」清單自己用的資料接口。
+    格式：{"code":0,"data":{"list":[{title,url,timestamp,source,abstract,...}], "honeyPotList":[...]}}
+
+    honeyPotList 是反爬蟲的誘餌：裡面放一筆跟 list[0] 很像、但 id 和網址都是假的項目
+    （網址裡會混進一段可疑字樣，正常使用者畫面上根本看不到這則），程式如果抓了它、甚至真的
+    去 fetch 那個網址，就會暴露自己是程式在抓，不是瀏覽器——這裡完全不讀 honeyPotList，
+    只處理 list。
+
+    「要聞」其實是富途牛牛從多家原始媒體（金十數據、財聯社、智通財經APP、中信證券研究……）
+    轉載彙整的清單，不是它自己寫的稿，所以每則新聞的來源用接口裡附的原始出處（item 的
+    source 欄位），沒有的話才退回用這個設定的名稱——這樣如果裡面剛好混到「華爾街見聞」的
+    稿子，會算在原本的「華爾街見聞」底下，不會因為多了「富途牛牛」這層外殼而被重要消息
+    來源漏掉。timestamp 是字串形式的 epoch 秒數（不是毫秒）。標題是簡體字。"""
+    obj = json.loads(data.decode("utf-8-sig"))
+    if not isinstance(obj, dict) or not isinstance(obj.get("data"), dict) or "list" not in obj["data"]:
+        raise ValueError("富途牛牛要聞接口的格式跟預期不同（網址可能有誤，或接口已改版）")
+    if obj.get("code") not in (None, 0):
+        raise ValueError("富途牛牛要聞接口回傳錯誤：%s" % obj.get("message"))
+    out = []
+    for it in obj["data"]["list"] or []:
+        if not isinstance(it, dict):
+            continue
+        title = clean_text(it.get("title"), 400)
+        url = _safe_url(it.get("url"))
+        if not title or not url:
+            continue
+        try:
+            ts = int(str(it.get("timestamp") or "0").strip())
+        except ValueError:
+            ts = 0
+        source = clean_text(it.get("source"), 60) or default_source
+        out.append({
+            "title": title,
+            "url": url,
+            "summary": clean_text(it.get("abstract"), 300),
+            "published": ts,
+            "source": source,
+            "uid": make_uid(norm_url(url)),
+        })
+    return out
+
+
 # ---------------------------------------------------------------- 東方財富首頁「快訊」小工具
 
 class _EastmoneyKX(HTMLParser):
@@ -679,6 +724,8 @@ def parse_source(data, src):
         return parse_twse_json(data, src["name"])
     if src.get("type") == "wscn_json":
         return parse_wscn_json(data, src["name"])
+    if src.get("type") == "futunn_headlines":
+        return parse_futunn_headlines(data, src["name"])
     if src.get("type") == "eastmoney_kx":
         return parse_eastmoney_kx(data, src["name"])
     if src.get("type") == "eastmoney_articles":
