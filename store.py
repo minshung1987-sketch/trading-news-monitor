@@ -6,7 +6,8 @@ import threading
 import time
 from contextlib import contextmanager
 
-from rules import bigrams, cluster_bonus, is_similar, number_set
+from rules import bigrams, cluster_bonus, compile_kw, is_similar, number_set
+from zhnorm import to_simp
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS articles(
@@ -513,7 +514,7 @@ class Store:
                 "SELECT source FROM articles WHERE dup_of IS NULL AND published >= ? "
                 "GROUP BY source ORDER BY COUNT(*) DESC LIMIT 60", (since,))]
 
-    def important_source_counts(self, since):
+    def important_source_counts(self, since, important_sources):
         """重要消息來源集錦裡，各個實際來源名稱（例如「經濟日報（經 Google 新聞）」「東方財富（焦點新聞）」）
         各自的未讀數，用來做「只看這幾個來源」的子篩選（設定 → 一般設定的「重要消息來源」是用來比對
         關鍵字的粗略名稱，這裡回傳的是實際存在資料庫裡、可以直接拿來篩選的完整來源名稱）。
@@ -521,7 +522,19 @@ class Store:
         跟 _where() 的「source／sources」篩選同一個道理：不能只算代表這則（叢集 primary）的來源，
         還要把併入同一叢集、各自的 source 不同的重複報導也算進去，不然同一件事剛好也被別家媒體
         先一步報導、因此被判定為重複併入別家代表之下的那些，這裡會完全漏算，點那個來源的徽章
-        篩選時也看不到。"""
+        篩選時也看不到。
+
+        但反過來也要注意：一則新聞會被標成「重要」，只要代表那則（叢集 primary）本身的來源符合
+        「重要消息來源」清單就夠了，不代表併入它底下的每一則重複報導的來源也符合——例如經濟日報
+        報的事剛好自由時報、TVBS、PTT 也各自報了一次、被判定成同一件事併進同一叢集，這些併入的
+        重複報導一樣會顯示在「重要消息來源」清單裡（這是對的，因為它們是同一則重要新聞的其他報導），
+        但自由時報、TVBS、PTT 本身並不是使用者設定的重要消息來源，不該在這個子篩選的徽章列表裡
+        各自冒出一個選項——不然徽章列表會混進大量跟「重要消息來源」設定完全無關的雜訊來源，使用者
+        每次要篩選時都要先從一長串裡挑出真正想要的那幾個，徽章列表本身就失去了「快速篩選」的用途。
+        所以這裡收集到的來源名稱，還要再比對一次是否真的符合 important_sources 清單，只留下符合的。"""
+        pats = [p for p in (compile_kw(w) for w in important_sources) if p]
+        if not pats:
+            return {}
         with self._tx() as c:
             rows = c.execute(
                 "SELECT source FROM articles WHERE dup_of IS NULL AND read = 0 "
@@ -532,7 +545,10 @@ class Store:
                 (since, since)).fetchall()
             counts = {}
             for r in rows:
-                counts[r[0]] = counts.get(r[0], 0) + 1
+                source = r[0]
+                if not any(p.search(to_simp(source or "")) for p in pats):
+                    continue
+                counts[source] = counts.get(source, 0) + 1
             return dict(sorted(counts.items(), key=lambda kv: -kv[1]))
 
     # ------------------------------------------------------------ 重新評估多空標示

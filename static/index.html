@@ -647,7 +647,7 @@ function schedulePoll() {
   pollTimer = setTimeout(pollStats, running ? 3000 : 20000);
 }
 
-const BUILD = '2026-10-12.2';
+const BUILD = '2026-10-13.1';
 function checkBuild(st) {
   const w = $('#verWarn');
   if (st.build === BUILD) { w.hidden = true; return; }
