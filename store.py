@@ -586,6 +586,13 @@ class Store:
                 c.execute("DELETE FROM articles WHERE id IN (%s)" % ",".join("?" * len(chunk)), chunk)
             c.execute("DELETE FROM articles WHERE dup_of IS NOT NULL AND dup_of NOT IN (SELECT id FROM articles)")
 
+    def apply_importance(self, updates):
+        """updates: [(id, base_imp, importance)]。改了重要度計分方式或規則後，重新評估既有新聞用。
+        已經被 apply_retag 刪掉的文章 id 不存在，UPDATE 不會有任何效果。"""
+        with self.lock, self._tx() as c:
+            c.executemany("UPDATE articles SET base_imp=?, importance=? WHERE id=?",
+                          [(int(b), int(i), int(a)) for a, b, i in updates])
+
     def update_signals_batch(self, updates):
         """updates: [(id, sentiment, neutral, signals_json)]"""
         with self.lock, self._tx() as c:

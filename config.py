@@ -110,6 +110,26 @@ DEFAULT_IMPORTANCE_WORDS = {
     "approved": 1, "SEC": 1, "probe": 1, "investigation": 1,
 }
 
+# 重要度規則（2026-11 新增）：詞組合，跟上面單一關鍵字的分數加在一起（合計最多 +3）。只看標題。
+# 格式：甲組詞 + 乙組詞 ! 排除詞 => 權重（1~3）。沒有 + 就是「出現任一個詞就成立」；
+# 詞前面加 @ 是關注清單裡的標的名稱或市場名稱（例如 @政經人物），套用該標的的撞名／情境詞過濾。
+# 這份是依「這則新聞出來後，股價會不會大幅反應」挑的：漲價、自結獲利突出權重最高（3），
+# 龍頭動態、經營層發言、重要政治人物發言權重 2。權重怎麼調、詞怎麼增減，都可以在設定裡改。
+DEFAULT_IMPORTANCE_RULES = [
+    "# 漲價（排除基本工資、學費、郵資、票價這類跟股價沒什麼關係的調漲）",
+    "漲價,調漲,喊漲,漲價函,調升報價,上調報價,price hike,price hikes,raises prices,raising prices ! 基本工資,最低工資,學費,郵資,票價,停車費,房租 => 3",
+    "# 自結獲利突出：「自結」本身可好可壞，要搭配亮眼的詞才算（自結虧損不算）",
+    "自結 + 創新高,新高,大增,暴增,激增,翻倍,倍增,大賺,賺贏,賺逾,轉盈,轉虧為盈,爆發,亮眼,優於預期,超乎預期 => 3",
+    "# 經營層發言：職稱 + 發言用詞（單獨出現「董事長」可能是人事異動、持股，不一定在發言）",
+    "董事長,董座,總經理,總座,執行長,財務長,創辦人,CEO,CFO,chairman + 表示,指出,預期,預估,看好,強調,透露,喊話,認為,坦言,預告,示警,重申,證實,宣布,宣佈,稱,說,：,says,said,expects,warns,sees => 2",
+    "# 美股七巨頭高層（人名用關注清單裡的「○○高層」標的）發言",
+    "@Apple高層,@Microsoft高層,@Alphabet高層,@Amazon高層,@NVIDIA高層,@Meta高層,@Tesla高層 + 表示,指出,預期,看好,強調,透露,喊話,認為,預告,宣布,宣佈,稱,說,：,says,said,expects,warns,sees,announces => 2",
+    "# 重要政治人物發言：關注清單裡「政經人物」市場的人物，或總統、首相、部長、央行總裁這個層級的職稱",
+    "@政經人物,總統,副總統,行政院長,經濟部長,財政部長,財長,央行總裁,首相,總理,國務卿,商務部長,貿易代表,聯準會主席,Fed主席,Fed Chair,prime minister,賴清德,卓榮泰,楊金龍 + 表示,指出,宣布,宣佈,警告,喊話,暗示,強調,重申,表態,示警,認為,預告,簽署,下令,稱,說,威脅,：,says,said,warns,signals,announces,orders,signs,threatens ! 總統盃,總統杯 => 2",
+    "# 龍頭動態：各產業龍頭公司 + 擴產、訂單、收購這類動作（想追蹤哪些龍頭，直接增減第一組的公司名）",
+    "台積電,TSMC,聯發科,鴻海,廣達,緯創,台達電,聯電,日月光,大立光,輝達,NVIDIA,蘋果,Apple,特斯拉,Tesla,微軟,Microsoft,谷歌,Google,亞馬遜,Amazon,Meta,三星,Samsung,SK海力士,美光,Micron,英特爾,Intel,AMD,博通,Broadcom + 擴產,擴廠,新廠,斥資,加碼投資,宣布投資,赴美投資,接單,訂單,供貨,量產,出貨,合作,收購,停產,斷供,布局,簽約,推出,發表,漲價,財報,法說,財測 => 2",
+]
+
 DEFAULT_POSITIVE_WORDS = [
     "上修", "調升", "調高",
     "漲價", "調漲", "供不應求", "缺貨", "不可抗力", "吃緊", "趨緊", "預付款", "樂觀",
@@ -389,6 +409,7 @@ DEFAULT_CONFIG = {
         {"name": "富途牛牛（要聞）", "url": "https://news.futunn.com/news-site-api/main/get-market-list?size=30&isSupportWebp=true", "type": "futunn_headlines", "market": "總經", "keep_all": True, "official": False, "enabled": True},
     ],
     "importance_words": DEFAULT_IMPORTANCE_WORDS,
+    "importance_rules": DEFAULT_IMPORTANCE_RULES,
     "positive_words": DEFAULT_POSITIVE_WORDS,
     "negative_words": DEFAULT_NEGATIVE_WORDS,
     "neutral_words": DEFAULT_NEUTRAL_WORDS,
@@ -587,6 +608,10 @@ def normalize(raw):
         cfg["importance_words"] = {str(k).strip(): _int(v, 1, 1, 3) for k, v in iw.items() if str(k).strip()}
     else:
         cfg["importance_words"] = dict(DEFAULT_IMPORTANCE_WORDS)
+    ir = raw.get("importance_rules")
+    if isinstance(ir, str):
+        ir = ir.splitlines()
+    cfg["importance_rules"] = [str(x).strip() for x in ir if str(x).strip()] if isinstance(ir, list) else list(DEFAULT_IMPORTANCE_RULES)
     sr = raw.get("sector_rules")
     if isinstance(sr, str):
         sr = sr.splitlines()

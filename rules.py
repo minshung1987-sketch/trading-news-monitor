@@ -181,6 +181,70 @@ def validate_rules(lines):
     return bad
 
 
+# ---------------------------------------------------------------- 重要度規則
+
+def parse_importance_line(line):
+    """解析一行「重要度規則」。格式：
+
+        甲組詞,甲組詞 + 乙組詞,乙組詞 ! 排除詞,排除詞 => 權重
+
+    - 只有一組詞（沒有 +）：標題出現任一個詞就成立（例如「漲價,調漲 => 3」）。
+    - 兩組詞：標題要「甲組任一詞」跟「乙組任一詞」同時出現才成立（例如「董事長,執行長 + 表示,指出 => 2」，
+      用來抓「經營層發言」這種單一個詞抓不到的情況）。
+    - ! 後面的排除詞是選填：標題有其中一個，這條規則就不成立。
+    - 詞前面加 @ 代表「關注清單裡的標的」：@政經人物 = 這則新聞比對到市場是「政經人物」的任一標的，
+      @台積電 = 比對到名稱叫「台積電」的標的（已經套用該標的的撞名／情境詞過濾，比直接寫人名準）。
+    - => 後面是權重，1 到 3，會跟「重要度關鍵字」的分數加在一起（合計最多加 3 分）。
+    格式不對會丟出 ValueError（訊息是白話）。空行與 # 開頭的註解回傳 None。"""
+    line = (line or "").strip()
+    if not line or line.startswith("#"):
+        return None
+    parts = ARROW.split(line, maxsplit=1)
+    if len(parts) != 2 or not parts[1].strip():
+        raise ValueError("缺少「=>」與後面的權重（1 到 3，例如 => 2）")
+    left, right = parts
+    if not re.fullmatch(r"[1-3]", right.strip()):
+        raise ValueError("「=>」後面只能寫權重 1、2 或 3")
+    excl = []
+    if "!" in left or "！" in left:
+        left, ex = re.split(r"[!！]", left, maxsplit=1)
+        excl = split_words(ex)
+    groups = [split_words(g) for g in re.split(r"[+＋]", left)]
+    if len(groups) > 2 or not groups or not all(groups):
+        raise ValueError("條件要寫成「甲組詞 + 乙組詞」（用 + 分開，各自用逗號列出詞）；只有一組詞就是出現任一個詞就成立")
+    topics, triggers = (groups[0], groups[1]) if len(groups) == 2 else (groups[0], [])
+    return {"topics": topics, "triggers": triggers, "excludes": excl, "weight": int(right.strip())}
+
+
+def validate_importance_rules(lines):
+    """回傳 [(行號, 原文, 錯誤說明)]；全部正確就是空清單。"""
+    bad = []
+    for i, line in enumerate(lines or [], 1):
+        try:
+            parse_importance_line(line)
+        except ValueError as e:
+            bad.append((i, line, str(e)))
+    return bad
+
+
+def _word_group(words):
+    """把一組詞編成 (樣式清單, 關注清單標的參照集合)；@開頭的詞是關注清單裡的標的名稱或市場名稱。"""
+    pats, refs = [], set()
+    for w in words:
+        if w.startswith("@") and len(w) > 1:
+            refs.add(w[1:].strip())
+        else:
+            p = compile_kw(w)
+            if p:
+                pats.append(p)
+    return pats, refs
+
+
+def _group_hit(group, text, names, markets):
+    pats, refs = group
+    return any(p.search(text) for p in pats) or any(r in names or r in markets for r in refs)
+
+
 def _compiled(words):
     return [p for p in (compile_kw(w) for w in words) if p]
 
@@ -216,6 +280,18 @@ class Matcher:
             p = compile_kw(word)
             if p:
                 self.imp.append((p, int(weight)))
+        # 重要度規則（詞組合）：跟上面單一關鍵字的分數加在一起，只看標題（摘要太長、太容易提到不相干的職稱）
+        self.imp_rules = []
+        for line in cfg.get("importance_rules", []) or []:
+            try:
+                r = parse_importance_line(line)
+            except ValueError:
+                continue                                            # 壞掉的行略過（存檔時會擋下並提示）
+            if r:
+                self.imp_rules.append({
+                    "topics": _word_group(r["topics"]),
+                    "triggers": _word_group(r["triggers"]) if r["triggers"] else None,
+                    "excludes": _compiled(r["excludes"]), "weight": r["weight"]})
         self.sentiment = bool(cfg.get("settings", {}).get("sentiment_hint", True))
         self.pos = [p for p in (compile_kw(w) for w in cfg.get("positive_words", [])) if p]
         self.neg = [p for p in (compile_kw(w) for w in cfg.get("negative_words", [])) if p]
@@ -336,15 +412,39 @@ class Matcher:
         neg = frozenset(w for w, p in self.neg_words if p.search(t))
         return pos, neg
 
-    def score(self, title, summary, official=False, item_boost=0):
-        """回傳 (基礎重要度 1~5, 情緒 -1/0/1, 是否命中中性關鍵字)。
-        中性關鍵字（如「資本支出」「擴產」）只是額外標示話題性質，
-        獨立於多方／空方關鍵字的比較，不會互相抵銷或覆蓋。
-        同事件被多家報導的重要度加成在資料庫端計算。"""
+    def importance_hit(self, title, summary, matched=()):
+        """標題／摘要命中的重要度分數（尚未封頂）：單一關鍵字（importance_words，看標題加摘要）
+        加上詞組合規則（importance_rules，只看標題）。matched 是這則新聞比對到的關注標的，
+        規則裡寫 @標的名稱／@市場名稱 時用它判斷。"""
         title, summary = self.clean(title), self.clean(summary)
         text = title + " " + summary
         hit = sum(w for p, w in self.imp if p.search(text))
-        base = 1 + min(3, hit) + (1 if official else 0) + item_boost
+        if self.imp_rules:
+            names = {m["name"] for m in matched}
+            markets = {m.get("market") or "" for m in matched}
+            for r in self.imp_rules:
+                if not _group_hit(r["topics"], title, names, markets):
+                    continue
+                if r["triggers"] and not _group_hit(r["triggers"], title, names, markets):
+                    continue
+                if any(p.search(title) for p in r["excludes"]):
+                    continue
+                hit += r["weight"]
+        return hit
+
+    def score(self, title, summary, matched=()):
+        """回傳 (基礎重要度 1~5, 情緒 -1/0/1, 是否命中中性關鍵字)。
+
+        重要度 = 1（沒有任何訊號時的底線，不是加分）+ 命中的重要度分數（最多 +3）。
+        官方來源、重點標的都不再加分（2026-11 起）：官方公告很多是轉投資這類小事，
+        重要度只反映「這則新聞出來後，股價大幅反應的可能性」。
+
+        中性關鍵字（如「資本支出」「擴產」）只是額外標示話題性質，
+        獨立於多方／空方關鍵字的比較，不會互相抵銷或覆蓋。
+        同事件被多家報導的重要度加成在資料庫端計算。"""
+        hit = self.importance_hit(title, summary, matched)
+        title = self.clean(title)
+        base = 1 + min(3, hit)
         base = max(1, min(5, base))
         sent, neutral = 0, False
         if self.sentiment:

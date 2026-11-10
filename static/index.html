@@ -647,7 +647,7 @@ function schedulePoll() {
   pollTimer = setTimeout(pollStats, running ? 3000 : 20000);
 }
 
-const BUILD = '2026-10-13.1';
+const BUILD = '2026-11-10.1';
 function checkBuild(st) {
   const w = $('#verWarn');
   if (st.build === BUILD) { w.hidden = true; return; }
@@ -1090,7 +1090,6 @@ function watchPane() {
       h('input', { type: 'checkbox', checked: !!it.institution, onchange: e => { it.institution = e.target.checked; } }), '法人報告'),
     h('label', { class: 'chk', title: '容易撞名的人物（姓氏是常見英文姓，容易跟運動員、演藝人員同名）：標題還要出現 Fed、聯準會、利率這類詞才算相關。這類用詞可在「一般設定」修改' },
       h('input', { type: 'checkbox', checked: !!it.person, onchange: e => { it.person = e.target.checked; } }), '易撞名人物'),
-    h('label', { class: 'chk', title: '重點標的的新聞重要度 +1' }, h('input', { type: 'checkbox', checked: it.boost > 0, onchange: e => { it.boost = e.target.checked ? 1 : 0; } }), '重點標的'),
     h('button', { class: 'btn danger', onclick: () => { draft.watchlist.splice(idx, 1); renderSettings(); } }, '刪除'))));
   pane.append(h('button', { class: 'btn add', onclick: () => { draft.watchlist.push({ name: '', market: '台股', keywords: [], google: 'auto', boost: 0, direction: true, commodity: false, institution: false, person: false }); renderSettings(); } }, '新增標的'));
   return pane;
@@ -1165,7 +1164,7 @@ function genPane() {
     h('div', { class: 'field' },
       h('span', {}, '整篇文章直接排除：標題只要符合下面任一詞組，這則新聞完全不收進來（一行可以寫多個，用逗號分隔；# 開頭是註解）'),
       h('span', { class: 'hint', style: 'margin:2px 0 6px' }, '用來擋掉盤中速報這類機械式產生、對交易沒有意義的價格快報。跟下面「非商品用法」不同：那個只是遮住某個詞不參與比對，這個是整篇丟掉，且不受來源「收錄全部」保護（只有加星號會保留）。改完存檔，資料庫裡已經收進來的同類新聞也會自動清掉。'),
-      h('textarea', { rows: 4, wrap: 'off', spellcheck: 'false', style: 'font-size:13px', oninput: e => { draft.title_exclude = e.target.value.split('\\n'); } }, (draft.title_exclude || []).join('\\n'))),
+      h('textarea', { rows: 4, wrap: 'off', spellcheck: 'false', style: 'font-size:13px', oninput: e => { draft.title_exclude = e.target.value.split('\n'); } }, (draft.title_exclude || []).join('\n'))),
     h('div', { class: 'field' },
       h('span', {}, '非商品／非標的的用法：這些詞組會先被遮掉再比對（一行可以寫多個，用逗號分隔；# 開頭是註解）'),
       h('span', { class: 'hint', style: 'margin:2px 0 6px' }, '例如「黃金周」「黃金交叉」不是金價，「橄欖油」不是原油，「apple pie」不是蘋果公司。發現新的雜訊，直接在最下面加一行就好。改完儲存後，最近保留期間內已經存在的雜訊新聞也會自動清掉（有加星號的不會刪）。'),
@@ -1181,14 +1180,18 @@ function genPane() {
     h('div', { class: 'field' },
       h('span', {}, '來源排除：來源（媒體／出處名稱）符合下面任一名稱，這則新聞完全不收，無論標題是否命中財經情境詞或股票代碼（一行可以寫多個，用逗號分隔；# 開頭是註解）'),
       h('span', { class: 'hint', style: 'margin:2px 0 6px' }, '用來擋掉娛樂、廣告／業配這類媒體——它們的標題常常剛好用到「缺貨」「供不應求」這種同時也是財經情境詞的通用詞，光看標題擋不掉，只能從來源本身排除。發現新的雜訊來源，直接在最下面加一行就好。'),
-      h('textarea', { rows: 3, wrap: 'off', spellcheck: 'false', style: 'font-size:13px', oninput: e => { draft.source_exclude = e.target.value.split('\\n'); } }, (draft.source_exclude || []).join('\\n'))),
+      h('textarea', { rows: 3, wrap: 'off', spellcheck: 'false', style: 'font-size:13px', oninput: e => { draft.source_exclude = e.target.value.split('\n'); } }, (draft.source_exclude || []).join('\n'))),
     h('div', { class: 'field' },
       h('span', {}, '重要消息來源：來源（媒體／出處名稱）符合下面任一名稱，這則新聞不管有沒有比對到關注標的、板塊規則，也不管多方／空方／中性關鍵詞有沒有命中，一律收進來，並出現在左側「重要消息來源」集錦（一行可以寫多個，用逗號分隔；# 開頭是註解）'),
       h('span', { class: 'hint', style: 'margin:2px 0 6px' }, '不用寫媒體全名，來源欄位裡有出現這個名稱就算數（例如寫「東方財富」就能同時比對「東方財富（快訊）」「東方財富（焦點新聞）」）。想追加其他媒體當重要消息來源，直接在最下面加一行就好。'),
-      h('textarea', { rows: 3, wrap: 'off', spellcheck: 'false', style: 'font-size:13px', oninput: e => { draft.important_sources = e.target.value.split('\\n'); } }, (draft.important_sources || []).join('\\n'))),
+      h('textarea', { rows: 3, wrap: 'off', spellcheck: 'false', style: 'font-size:13px', oninput: e => { draft.important_sources = e.target.value.split('\n'); } }, (draft.important_sources || []).join('\n'))),
     field('政經人物情境詞：標成「易撞名人物」的標的（Fed官員…），標題要有其中一個才算相關，用來擋掉跟運動員、演藝人員同名的無關新聞（用逗號分隔）',
       h('textarea', { rows: 4, spellcheck: 'false', oninput: e => { draft.person_context = splitKw(e.target.value); } }, (draft.person_context || []).join('，'))),
-    field('重要度關鍵字：每行一個「詞 權重」，權重 1 到 3。標題或摘要出現這些詞，重要度會上升。',
+    h('div', { class: 'field' },
+      h('span', {}, '重要度規則：一行一條，寫成「甲組詞 + 乙組詞 ! 排除詞 => 權重」（權重 1 到 3）'),
+      h('span', { class: 'hint', style: 'margin:2px 0 6px' }, '重要度要反映「這則新聞出來後，股價會不會大幅反應」。標題要同時有甲組任一詞與乙組任一詞才成立（只寫一組詞就是出現任一個就成立）；! 排除詞可省略；# 開頭是註解。詞前面加 @ 代表關注清單裡的標的名稱或市場名稱（例如 @政經人物）。這裡的分數會跟下面「重要度關鍵字」的分數加在一起，合計最多加 3 分。官方來源、重點標的不再額外加分。只看標題。'),
+      h('textarea', { rows: 14, wrap: 'off', spellcheck: 'false', style: 'font-size:13px', oninput: e => { draft.importance_rules = e.target.value.split('\n'); } }, (draft.importance_rules || []).join('\n'))),
+    field('重要度關鍵字：每行一個「詞 權重」，權重 1 到 3。標題或摘要出現這些詞，重要度會上升（跟上面的重要度規則分數加在一起）。',
       h('textarea', { spellcheck: 'false', oninput: e => {
         const o = {};
         e.target.value.split('\n').forEach(line => {

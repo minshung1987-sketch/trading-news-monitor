@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from config import ConfigError, flatten_noise, load_config, normalize, save_config
 from fetcher import build_sources, describe_error, fetch_source, http_get, parse_source
-from rules import Matcher, norm_title, validate_rules, extract_stock_codes
+from rules import Matcher, cluster_bonus, norm_title, validate_importance_rules, validate_rules, extract_stock_codes
 from store import Store, agg_sentiment, merge_signals, sj
 
 
@@ -38,6 +38,10 @@ class Monitor:
         bad = validate_rules(cfg["sector_rules"])
         if bad:
             raise ConfigError("「板塊影響規則」有 %d 行格式不對，沒有儲存：\n%s" % (
+                len(bad), "\n".join("第 %d 行：%s\n    %s" % (i, why, text[:80]) for i, text, why in bad[:5])))
+        bad = validate_importance_rules(cfg["importance_rules"])
+        if bad:
+            raise ConfigError("「重要度規則」有 %d 行格式不對，沒有儲存：\n%s" % (
                 len(bad), "\n".join("第 %d 行：%s\n    %s" % (i, why, text[:80]) for i, text, why in bad[:5])))
         save_config(self.cfg_path, cfg)
         with self.lock:
@@ -70,6 +74,8 @@ class Monitor:
             "noise": flatten_noise(cfg.get("noise_phrases")), "ctx": cfg.get("commodity_context"),
             "rules": cfg.get("sector_rules"), "pos": cfg.get("positive_words"), "neg": cfg.get("negative_words"),
             "neu": cfg.get("neutral_words"), "hint": cfg["settings"].get("sentiment_hint"),
+            # 重要度分數也要隨設定重算（改了重要度關鍵字／規則，或這次更新改了計分方式，舊新聞的分數才會跟著變）
+            "imp": cfg.get("importance_words"), "imp_rules": cfg.get("importance_rules"), "imp_ver": 2,
         }
         return hashlib.sha1(json.dumps(data, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
@@ -87,12 +93,13 @@ class Monitor:
         names = {w["name"] for w in cfg["watchlist"]}
         market_of = {w["name"]: w.get("market", "") for w in cfg["watchlist"]}
         keep_all = {f["name"] for f in cfg["feeds"] if f.get("keep_all")}
-        new_tags, sig, neu, excl, kwp, kwn, imp = {}, {}, {}, {}, {}, {}, {}
+        new_tags, sig, neu, excl, kwp, kwn, imp, base_of = {}, {}, {}, {}, {}, {}, {}, {}
         for r in rows:
             excl[r["id"]] = matcher.excluded(r["title"])
             matched = [] if excl[r["id"]] else matcher.match(r["title"] + " " + (r["summary"] or ""))
             new_tags[r["id"]] = [it["name"] for it in matched]
-            _b, _s, n = matcher.score(r["title"], r["summary"] or "")
+            b, _s, n = matcher.score(r["title"], r["summary"] or "", matched)
+            base_of[r["id"]] = b
             neu[r["id"]] = bool(n)
             sig[r["id"]] = matcher.signals(r["title"], new_tags[r["id"]])
             # 多方／空方新聞蒐集用的純文字比對，跟上面 signals（單則新聞的利多／利空標籤）是分開算的。
@@ -104,7 +111,7 @@ class Monitor:
         groups = {}
         for r in rows:
             groups.setdefault(r["dup_of"] or r["id"], []).append(r)
-        updates, delete_ids = [], []
+        updates, delete_ids, imp_updates = [], [], []
         for root, mem in groups.items():
             old_union = []
             for r in mem:
@@ -126,6 +133,15 @@ class Monitor:
             if old_union and not new_union and all(t in names for t in old_union) and not protected:
                 delete_ids += [r["id"] for r in mem]
                 continue
+            # 重要度：代表那一則 = 叢集裡最高的基礎分 + 多家來源報導的加成（跟抓取時 ingest 算法一致）；
+            # 被併入的那幾則各自只有自己的基礎分。
+            group_base = max(base_of[r["id"]] for r in mem)
+            n_src = len({r["source"] for r in mem})
+            for r in mem:
+                if r["id"] == root:
+                    imp_updates.append((r["id"], group_base, min(5, group_base + cluster_bonus(n_src))))
+                else:
+                    imp_updates.append((r["id"], base_of[r["id"]], base_of[r["id"]]))
             merged_sig, merged_neu, merged_kwp, merged_kwn, merged_imp = [], False, False, False, False
             for r in mem:
                 merged_sig = merge_signals(merged_sig, sig[r["id"]])
@@ -147,6 +163,7 @@ class Monitor:
                     updates.append((r["id"], json.dumps(new_tags[r["id"]], ensure_ascii=False), r["markets"] or "[]",
                                     agg_sentiment(sig[r["id"]]), neu[r["id"]], sj(sig[r["id"]]), kwp[r["id"]], kwn[r["id"]], imp[r["id"]]))
         self.store.apply_retag(updates, delete_ids)
+        self.store.apply_importance(imp_updates)
         self.store.set_meta("match_sig", self.match_signature(cfg))
         log("已重新比對 %d 則新聞（清掉 %d 則不相關的雜訊）" % (len(rows), len(delete_ids)))
 
@@ -246,8 +263,7 @@ class Monitor:
                 # 不然會洗版到一般的市場瀏覽畫面——這篇還是會收進來，只是只出現在「重要消息來源」集錦。
                 if not (important and not src.get("keep_all")):
                     markets = [src["market"]]
-            boost = max([m["boost"] for m in matched] or [0])
-            base, _generic, neutral = matcher.score(r["title"], r["summary"], bool(src.get("official")), boost)
+            base, _generic, neutral = matcher.score(r["title"], r["summary"], matched)
             sent = agg_sentiment(signals)
             out.append({
                 "uid": r["uid"], "title": r["title"], "norm": norm_title(r["title"]),
