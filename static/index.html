@@ -286,6 +286,45 @@
   .st-row .err { grid-column: 2 / -1; color: var(--warn); font-size: 13px; overflow-wrap: anywhere; }
   .st-row .m { color: var(--ink3); font-size: 12.5px; }
 
+  /* ---------------------------------------------------------- 事件追蹤 */
+  .ev { margin: 14px 16px; border: 1px solid var(--rule); border-radius: 10px; background: var(--sheet); overflow: hidden; }
+  .ev-h { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; }
+  .ev-toggle { width: 26px; height: 26px; flex: none; border: 0; border-radius: 6px; background: none; color: var(--ink2); font-size: 15px; line-height: 1; }
+  .ev-toggle:hover { background: var(--hover); color: var(--ink); }
+  .ev-hm { flex: 1; min-width: 0; }
+  .ev-title { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 16px; font-weight: 700; overflow-wrap: anywhere; }
+  .ev-meta { margin-top: 2px; color: var(--ink2); font-size: 12.5px; }
+  .ev-acts { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+  .ev-sec { padding: 10px 14px 12px; border-top: 1px solid var(--rule); }
+  .ev-sec h3 { margin: 0 0 8px; font-size: 13px; font-weight: 700; color: var(--ink2); }
+  .ev-sum { margin: 0 0 8px; color: var(--ink2); }
+  .pt, .ai-tl, .note { display: flex; gap: 8px; align-items: flex-start; padding: 3px 0; }
+  .pt .st { flex: none; padding: 0 7px; border: 1px solid var(--rule); border-radius: 3px; background: none; font-size: 12px; line-height: 20px; font-weight: 600; }
+  .pt .st.confirmed { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+  .pt .st.unverified { color: var(--warn); border-color: var(--warn); }
+  .ai-tl .d { flex: none; width: 98px; white-space: nowrap; color: var(--ink2); font-size: 13px; font-weight: 600; padding-top: 1px; }
+  .edt { flex: 1; min-width: 0; display: flex; gap: 6px; align-items: flex-start; }
+  .edt-t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .edt textarea, .note-add textarea { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--rule); border-radius: 6px; background: var(--sheet); resize: vertical; }
+  .ic.sm { width: 24px; height: 24px; flex: none; font-size: 13px; }
+  .ai-foot { margin-top: 8px; color: var(--ink3); font-size: 12px; }
+  .ev-tlsec { padding-left: 0; padding-right: 0; }
+  .ev-tlsec h3, .ev-tlsec > .hint { padding: 0 14px; }
+  .tl-day { padding: 5px 14px; background: var(--bg); border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); color: var(--ink2); font-size: 12px; font-weight: 600; }
+  .ev-tl .row:last-child { border-bottom: 0; }
+  .note .nt { flex: none; min-width: 78px; padding-top: 2px; color: var(--ink3); font-size: 12px; }
+  .note .ntx { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .note-add { display: flex; gap: 8px; margin-top: 8px; align-items: flex-start; }
+  #dlgEvent { width: min(640px, 94vw); }
+  #evErr { white-space: pre-line; }
+  .ev-extra { display: inline-flex; gap: 8px; }
+  @media (max-width: 860px) {
+    .ev { margin: 10px 8px; }
+    .ev-h { flex-wrap: wrap; }
+    .ev-acts { width: 100%; justify-content: flex-start; }
+    .ai-tl { flex-wrap: wrap; }
+  }
+
   .toast {
     position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 50; max-width: min(560px, 92vw);
     padding: 10px 16px; border-radius: 8px; background: var(--ink); color: var(--bg); font-weight: 500;
@@ -417,6 +456,12 @@
   <div class="db" id="lbBody"></div>
 </dialog>
 
+<dialog id="dlgEvent">
+  <div class="dh"><h2 id="evDlgTitle">新增事件</h2><button class="btn" id="evClose">關閉</button></div>
+  <div class="db" id="evBody"></div>
+  <div class="df"><span class="err" id="evErr"></span><span class="ev-extra" id="evExtra"></span><button class="btn" id="evCancel">取消</button><button class="btn primary" id="evSave">儲存</button></div>
+</dialog>
+
 <div class="toast" id="toast" hidden role="status"></div>
 
 <script>
@@ -525,6 +570,7 @@ const hasFilters = () => S.q || S.minImp > 1 || S.unread || S.starred || S.sent 
 
 /* ------------------------------------------------------------ 載入 */
 async function loadArticles(reset = true, toTop = false) {
+  if (S.view.kind === 'events') { if (!$('#list :focus')) loadEvents(); return; }   // 事件追蹤畫面：背景更新時重載事件；正在打字就先不動
   if (S.loading) return;
   S.loading = true;
   const keepId = reset && S.sel >= 0 && S.items[S.sel] ? S.items[S.sel].id : null;
@@ -647,7 +693,7 @@ function schedulePoll() {
   pollTimer = setTimeout(pollStats, running ? 3000 : 20000);
 }
 
-const BUILD = '2026-11-10.1';
+const BUILD = '2026-11-13.1';
 function checkBuild(st) {
   const w = $('#verWarn');
   if (st.build === BUILD) { w.hidden = true; return; }
@@ -697,6 +743,7 @@ function setView(v) {
   renderNav();
   if (v.kind === 'digest') { loadDigest(); return; }
   if (v.kind === 'focus') { loadFocusStocks(); return; }
+  if (v.kind === 'events') { loadEvents(); return; }
   syncControls(); loadArticles(true, true);
 }
 function navItem(label, n, v) {
@@ -714,6 +761,8 @@ function renderNav() {
     onclick: () => setView({ kind: 'digest' }) }, h('span', {}, '📋 每日摘要')));
   nav.append(h('button', { class: 'nav-i', 'aria-current': S.view.kind === 'focus' ? 'true' : null,
     onclick: () => setView({ kind: 'focus' }) }, h('span', {}, '🎯 盤前焦點股候選')));
+  nav.append(h('button', { class: 'nav-i', 'aria-current': S.view.kind === 'events' ? 'true' : null,
+    onclick: () => setView({ kind: 'events' }) }, h('span', {}, '🧭 事件追蹤')));
   if (st.markets.length) nav.append(h('div', { class: 'nav-h' }, '市場'));
   st.markets.forEach(m => nav.append(navItem(m.name, m.unread, { kind: 'market', value: m.name })));
   const sc = st.sent_counts || {};
@@ -831,6 +880,7 @@ function rowEl(a, i) {
       S.showSummary && a.summary ? h('p', { class: 'sum' }, a.summary) : null,
       S.expanded.has(a.id) ? dupList(a) : null),
     h('div', { class: 'acts' },
+      h('button', { class: 'ic', title: '以這則新聞建立「事件追蹤」', 'aria-label': '建立事件追蹤', onclick: () => openEventDialog(null, { name: a.title }) }, '🧭'),
       h('button', { class: 'ic' + (a.starred ? ' on' : ''), title: a.starred ? '取消星號 (s)' : '加上星號 (s)', 'aria-label': '星號', onclick: () => setStar(a, !a.starred) }, a.starred ? '★' : '☆'),
       h('button', { class: 'ic', title: a.read ? '標為未讀 (m)' : '標為已讀 (m)', 'aria-label': '已讀', onclick: () => setRead(a, !a.read) }, a.read ? '↺' : '✓')));
 }
@@ -1042,6 +1092,231 @@ document.addEventListener('keydown', e => {
     default: return;
   }
 });
+
+/* ------------------------------------------------------------ 事件追蹤 */
+const EV = { list: [], aiReady: false, open: new Set(), inited: false, desc: LS.get('evDesc', false), archived: false,
+  busy: new Set(), dupOpen: new Set(), draft: {}, loading: false };
+const dayLabel = ts => { const d = new Date(ts * 1000); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' 週' + '日一二三四五六'[d.getDay()]; };
+const dtStr = ts => { const d = new Date(ts * 1000); return pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + ' ' + hm(ts); };
+
+async function loadEvents() {
+  if (EV.loading) return;
+  EV.loading = true;
+  const root = $('#list');
+  if (!root.querySelector('.ev') && !root.querySelector('.ev-empty')) root.replaceChildren(h('div', { class: 'empty' }, h('h2', {}, '載入中…')));
+  try {
+    const res = await api('/api/events' + (EV.archived ? '?archived=1' : ''));
+    EV.list = res.events; EV.aiReady = res.ai_ready;
+    if (!EV.inited) { EV.inited = true; if (EV.list.length <= 3) EV.list.forEach(e => EV.open.add(e.id)); }
+    renderEvents();
+  } catch (e) {
+    if (S.view.kind === 'events') root.replaceChildren(h('div', { class: 'empty' }, h('h2', {}, '載入事件失敗'), h('p', {}, e.message)));
+  } finally { EV.loading = false; }
+}
+async function evAct(payload) {
+  try { const r = await api('/api/event', payload); await loadEvents(); return r; }
+  catch (e) { toast('操作失敗：' + e.message, true); return null; }
+}
+async function saveAi(ev, mutate) {
+  const next = JSON.parse(JSON.stringify(ev.ai)); mutate(next);
+  await evAct({ action: 'save_ai', id: ev.id, ai: next });
+}
+async function runEventAi(ev) {
+  if (EV.busy.has(ev.id)) return;
+  if (ev.ai && !confirm('重新整理會覆蓋目前的 AI 重點與時間軸（包含你手動改過的內容）。繼續？')) return;
+  EV.busy.add(ev.id); renderEvents();
+  try { await api('/api/event_ai', { id: ev.id }); toast('AI 整理完成'); }
+  catch (e) { toast('AI 整理失敗：' + e.message, true); }
+  finally { EV.busy.delete(ev.id); }
+  await loadEvents();
+}
+
+function editText(cur, onSave) {
+  const wrap = h('span', { class: 'edt' });
+  const show = () => wrap.replaceChildren(h('span', { class: 'edt-t' }, cur),
+    h('button', { class: 'ic sm', title: '編輯這一條', 'aria-label': '編輯', onclick: edit }, '✎'));
+  const edit = () => {
+    const ta = h('textarea', { rows: 2, value: cur });
+    wrap.replaceChildren(ta,
+      h('button', { class: 'btn', onclick: () => { const v = ta.value.trim(); if (v) onSave(v); } }, '儲存'),
+      h('button', { class: 'btn', onclick: show }, '取消'));
+    ta.focus();
+  };
+  show();
+  return wrap;
+}
+
+function aiSection(ev) {
+  const ai = ev.ai, box = h('div', { class: 'ev-sec' });
+  if (!ai) {
+    box.append(h('p', { class: 'hint', style: 'margin:0' },
+      '還沒有 AI 整理。按右上角「✨ AI 整理」，會把這個事件的新聞標題與摘要送給 Claude，整理成【重點】（已確定／未證實）與【時間軸】；' +
+      '每按一次呼叫一次 Claude API（用你自己的 key，會有少量費用）。' + (EV.aiReady ? '' : '需要先到「設定 → 一般設定」填入 API key。')));
+    return box;
+  }
+  box.append(h('h3', {}, '【重點】'));
+  if (ai.summary) box.append(h('div', { class: 'ev-sum' }, editText(ai.summary, v => saveAi(ev, a => { a.summary = v; }))));
+  ai.points.forEach((p, i) => box.append(h('div', { class: 'pt' },
+    h('button', { class: 'st ' + p.status, title: '點一下切換「已確定／未證實」', onclick: () => saveAi(ev, a => { a.points[i].status = a.points[i].status === 'confirmed' ? 'unverified' : 'confirmed'; }) },
+      p.status === 'confirmed' ? '已確定' : '未證實'),
+    editText(p.text, v => saveAi(ev, a => { a.points[i].text = v; })),
+    h('button', { class: 'ic sm', title: '刪除這一條', 'aria-label': '刪除', onclick: () => saveAi(ev, a => { a.points.splice(i, 1); }) }, '✕'))));
+  if (!ai.points.length) box.append(h('p', { class: 'hint', style: 'margin:0' }, '（沒有重點）'));
+  if (ai.timeline.length) {
+    box.append(h('h3', { style: 'margin-top:12px' }, '【時間軸】（AI 整理）'));
+    ai.timeline.forEach((t, i) => box.append(h('div', { class: 'ai-tl' },
+      h('span', { class: 'd' }, t.date || '—'),
+      editText(t.text, v => saveAi(ev, a => { a.timeline[i].text = v; })),
+      h('button', { class: 'ic sm', title: '刪除這一條', 'aria-label': '刪除', onclick: () => saveAi(ev, a => { a.timeline.splice(i, 1); }) }, '✕'))));
+  }
+  box.append(h('div', { class: 'ai-foot' }, 'AI 整理' + (ai.n_news ? '，根據 ' + ai.n_news + ' 則新聞' : '') +
+    (ev.ai_ts ? '，' + new Date(ev.ai_ts * 1000).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : '') +
+    '。只依標題與摘要整理，「已確定／未證實」是 AI 的判斷，可能有誤，請以原文為準；每一條都可以自己改。'));
+  return box;
+}
+
+function tlRow(ev, a) {
+  const bits = [h('span', { class: 'src' }, a.source)];
+  if (a.important) bits.push(h('span', { class: 'official', title: '重要消息來源' }, '重要'));
+  a.tags.forEach(t => bits.push(h('button', { class: 'tag', title: '只看「' + t + '」', onclick: () => setView({ kind: 'tag', value: t }) }, t)));
+  if (a.dups.length) bits.push(h('button', { class: 'dupbtn', 'aria-expanded': String(EV.dupOpen.has(a.id)),
+    onclick: () => { if (EV.dupOpen.has(a.id)) EV.dupOpen.delete(a.id); else EV.dupOpen.add(a.id); renderEvents(); } },
+    '另有 ' + a.dups.length + ' 則相同報導'));
+  const open = () => { if (!a.read) { a.read = true; act({ action: 'read', ids: [a.id] }).then(refreshCountsSoon).catch(() => {}); } };
+  return h('article', { class: 'row imp' + a.importance + (a.read ? ' read' : ''), title: '重要度 ' + a.importance + '/5' },
+    h('div', { class: 'time' }, h('span', { class: 'hm' }, hm(a.published))),
+    h('div', { class: 'body' },
+      h('a', { class: 'title', href: safeHref(a.url), target: '_blank', rel: 'noopener noreferrer', onclick: open, onauxclick: open }, a.title),
+      h('div', { class: 'meta' }, bits),
+      EV.dupOpen.has(a.id) ? dupList(a) : null),
+    h('div', { class: 'acts' },
+      h('button', { class: 'ic', title: '這則不屬於這個事件：移出', 'aria-label': '移出事件', onclick: async () => {
+        if (!confirm('把這則新聞（含相同報導）移出「' + ev.name + '」？之後也不會再自動收回來。')) return;
+        await evAct({ action: 'exclude', id: ev.id, article_id: a.id });
+      } }, '✕')));
+}
+function timelineSection(ev) {
+  const sec = h('div', { class: 'ev-sec ev-tlsec' });
+  sec.append(h('h3', {}, '【新聞時間軸】' + (ev.stats.truncated ? '（只顯示最近 ' + ev.timeline.length + ' 組）' : '')));
+  if (!ev.timeline.length) {
+    sec.append(h('p', { class: 'hint', style: 'margin:0' },
+      '目前還沒有符合規則的新聞。剛建立的事件要等下一次抓取才會有（可以按「立即更新」）；規則可以按「編輯」調整。'));
+    return sec;
+  }
+  const items = EV.desc ? [...ev.timeline].reverse() : ev.timeline;
+  const list = h('div', { class: 'ev-tl' });
+  let last = null;
+  items.forEach(a => {
+    const day = dayLabel(a.published);
+    if (day !== last) { list.append(h('div', { class: 'tl-day' }, day)); last = day; }
+    list.append(tlRow(ev, a));
+  });
+  sec.append(list);
+  return sec;
+}
+function notesSection(ev) {
+  const sec = h('div', { class: 'ev-sec' }, h('h3', {}, '【我的筆記】'));
+  ev.notes.forEach(n => sec.append(h('div', { class: 'note' },
+    h('span', { class: 'nt' }, new Date(n.ts * 1000).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })),
+    h('span', { class: 'ntx' }, n.text),
+    h('button', { class: 'ic sm', title: '刪除這則筆記', 'aria-label': '刪除筆記', onclick: async () => {
+      if (confirm('刪除這則筆記？')) await evAct({ action: 'del_note', note_id: n.id });
+    } }, '✕'))));
+  const ta = h('textarea', { rows: 2, placeholder: '寫下你的看法、做了什麼操作…', value: EV.draft[ev.id] || '',
+    oninput: e => { EV.draft[ev.id] = e.target.value; } });
+  sec.append(h('div', { class: 'note-add' }, ta, h('button', { class: 'btn', onclick: async () => {
+    const t = ta.value.trim(); if (!t) return;
+    EV.draft[ev.id] = '';
+    const r = await evAct({ action: 'add_note', id: ev.id, text: t });
+    if (!r) { EV.draft[ev.id] = t; renderEvents(); }
+  } }, '新增筆記')));
+  return sec;
+}
+function eventCard(ev) {
+  const st = ev.stats, open = EV.open.has(ev.id), busy = EV.busy.has(ev.id);
+  const badges = [];
+  if (st.max_importance >= 4) badges.push(h('span', { class: 'official', title: '事件裡有重要度 4 以上的新聞' }, '重要'));
+  st.markets.slice(0, 3).forEach(m => badges.push(h('span', { class: 'tag' }, m)));
+  const meta = '標的 ' + st.tags.length + ' · 新聞 ' + st.news + (st.reports > st.news ? '（共 ' + st.reports + ' 則報導）' : '') +
+    ' · 筆記 ' + ev.notes.length + (st.news ? ' · ' + dtStr(st.first) + ' ～ ' + dtStr(st.last) : '');
+  const card = h('section', { class: 'ev' },
+    h('div', { class: 'ev-h' },
+      h('button', { class: 'ev-toggle', 'aria-expanded': String(open), title: open ? '收合' : '展開', 'aria-label': open ? '收合' : '展開',
+        onclick: () => { if (open) EV.open.delete(ev.id); else EV.open.add(ev.id); renderEvents(); } }, open ? '▾' : '▸'),
+      h('div', { class: 'ev-hm' },
+        h('div', { class: 'ev-title' }, ev.name, ...badges),
+        h('div', { class: 'ev-meta' }, meta),
+        st.tags.length ? h('div', { class: 'meta' }, st.tags.slice(0, 10).map(t => h('button', { class: 'tag', title: '只看「' + t + '」', onclick: () => setView({ kind: 'tag', value: t }) }, t))) : null),
+      h('div', { class: 'ev-acts' },
+        h('button', { class: 'btn', disabled: busy, onclick: () => runEventAi(ev), title: '把事件的新聞標題與摘要送給 Claude，整理重點與時間軸' },
+          busy ? [h('span', { class: 'spin' }), '整理中…'] : '✨ AI 整理'),
+        h('button', { class: 'btn', onclick: () => openEventDialog(ev) }, '編輯'))));
+  if (open) card.append(aiSection(ev), timelineSection(ev), notesSection(ev));
+  return card;
+}
+function renderEvents() {
+  if (S.view.kind !== 'events') return;
+  const sc = $('#scroll'), keep = sc.scrollTop, root = $('#list');
+  root.replaceChildren();
+  root.append(h('div', { class: 'digest-head' },
+    h('div', { class: 'digest-title' }, EV.archived ? '已封存的事件' : '事件追蹤'),
+    h('button', { class: 'btn primary', onclick: () => openEventDialog(null) }, '＋ 新增事件'),
+    h('label', { class: 'chk' }, h('input', { type: 'checkbox', checked: EV.archived, onchange: e => { EV.archived = e.target.checked; EV.list = []; loadEvents(); } }), '看已封存的'),
+    h('label', { class: 'chk' }, '時間軸排序', select([['asc', '舊 → 新'], ['desc', '新 → 舊']], EV.desc ? 'desc' : 'asc',
+      v => { EV.desc = v === 'desc'; LS.set('evDesc', EV.desc); renderEvents(); }))));
+  if (!EV.list.length) {
+    root.append(h('div', { class: 'empty ev-empty' },
+      h('h2', {}, EV.archived ? '沒有封存的事件' : '還沒有追蹤的事件'),
+      h('p', {}, '事件追蹤會把同一件事的所有報導收成一張卡：時間軸、牽涉的標的、你的筆記，也可以請 AI 整理成「已確定／未證實」的重點。'),
+      EV.archived ? null : h('button', { class: 'btn primary', onclick: () => openEventDialog(null) }, '＋ 新增事件')));
+  } else {
+    EV.list.forEach(ev => root.append(eventCard(ev)));
+  }
+  sc.scrollTop = keep;
+  renderStatus_();
+}
+
+let evEditing = null;
+function openEventDialog(ev, prefill) {
+  evEditing = ev;
+  $('#evDlgTitle').textContent = ev ? '編輯事件' : '新增事件';
+  $('#evErr').textContent = '';
+  const name = h('input', { id: 'evName', maxlength: 60, value: ev ? ev.name : ((prefill && prefill.name) || '').slice(0, 60), placeholder: '例如：黃仁勳風波' });
+  const rules = h('textarea', { id: 'evRules', rows: 7, wrap: 'off', spellcheck: 'false', value: ev ? ev.rules : '',
+    placeholder: '黃仁勳,黃樂 + 調查,董事會\n輝達 + 婚外情 ! 財報' });
+  $('#evBody').replaceChildren(
+    h('p', { class: 'hint' }, '標題或摘要符合其中任何一行規則的新聞，就會收進這個事件；系統也會自動去 Google 新聞搜尋這些詞，所以不用先把它加進關注清單。'),
+    h('p', { class: 'hint' }, '一行的寫法：用逗號列出詞＝出現任一個詞就算；用 + 連接兩組詞＝兩組各要出現一個詞；! 後面是不想要的詞。每個詞至少兩個字，太短會收進一堆不相關的新聞。'),
+    field('事件名稱', name), field('關鍵詞規則（每行一條）', rules),
+    h('p', { class: 'hint', style: 'margin-top:10px' }, ev ? '改了規則會重新比對已保留的新聞；你手動移出的新聞不會被收回來。' : '範例：「黃仁勳,黃樂 + 調查,董事會」＝標題有黃仁勳或黃樂，而且有調查或董事會。'));
+  const extra = $('#evExtra'); extra.replaceChildren();
+  if (ev) {
+    extra.append(
+      h('button', { class: 'btn', onclick: async () => {
+        await evAct({ action: ev.archived ? 'unarchive' : 'archive', id: ev.id });
+        $('#dlgEvent').close(); toast(ev.archived ? '已取消封存' : '已封存（新聞仍保留，不再收新的）');
+      } }, ev.archived ? '取消封存' : '封存'),
+      h('button', { class: 'btn danger', onclick: async () => {
+        if (!confirm('刪除「' + ev.name + '」？事件的筆記與 AI 整理會一起刪掉，無法復原（新聞本身不會被刪）。')) return;
+        await evAct({ action: 'delete', id: ev.id });
+        $('#dlgEvent').close(); toast('已刪除事件');
+      } }, '刪除'));
+  }
+  $('#dlgEvent').showModal();
+  name.focus();
+}
+async function saveEvent() {
+  const payload = { action: evEditing ? 'update' : 'create', id: evEditing ? evEditing.id : 0, name: $('#evName').value, rules: $('#evRules').value };
+  $('#evErr').textContent = '';
+  try {
+    const r = await api('/api/event', payload);
+    $('#dlgEvent').close();
+    if (!evEditing) { EV.open.add(r.id); EV.archived = false; toast('已建立，正在抓取相關新聞（約 10～30 秒），完成後會自動出現'); }
+    else toast(r.changed ? '已儲存，正在依新規則重新比對' : '已儲存');
+    if (S.view.kind === 'events') await loadEvents(); else setView({ kind: 'events' });
+    pollStats();
+  } catch (e) { $('#evErr').textContent = e.message; }
+}
 
 /* ------------------------------------------------------------ 來源狀態對話框 */
 function openSources() {
@@ -1259,6 +1534,9 @@ function bind() {
   $('#fTr').addEventListener('change', e => { S.tr = e.target.checked; LS.set('tr', S.tr); if (!S.tr) setTrStat(''); renderList(); });
   $('#fImg').addEventListener('change', e => { S.img = e.target.checked; LS.set('img', S.img); if (!S.img) setImgStat(''); renderList(); });
   $('#lbClose').addEventListener('click', () => $('#dlgImg').close());
+  $('#evClose').addEventListener('click', () => $('#dlgEvent').close());
+  $('#evCancel').addEventListener('click', () => $('#dlgEvent').close());
+  $('#evSave').addEventListener('click', saveEvent);
   $('#dlgImg').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
   $('#fSum').addEventListener('change', e => { S.showSummary = e.target.checked; LS.set('sum2', S.showSummary); renderList(); });
   $('#segTheme').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; document.documentElement.dataset.theme = b.dataset.v; LS.set('theme', b.dataset.v); syncControls(); });
@@ -1295,7 +1573,7 @@ function bind() {
     if (S.view.kind === 'tag' && !S.stats.watchlist.some(w => w.name === S.view.value)) S.view = { kind: 'all' };
     renderNav(); renderSources(); renderStatus(); updateTitle();
   } catch (e) { $('#stText').textContent = '無法連線到本機服務'; }
-  await loadArticles(true);
+  if (S.view.kind === 'events') await loadEvents(); else await loadArticles(true);
   schedulePoll();
 })();
 })();

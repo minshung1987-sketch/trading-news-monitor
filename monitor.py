@@ -9,6 +9,7 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from config import ConfigError, flatten_noise, load_config, normalize, save_config
+from events import EventTracker
 from fetcher import build_sources, describe_error, fetch_source, http_get, parse_source
 from rules import Matcher, cluster_bonus, norm_title, validate_importance_rules, validate_rules, extract_stock_codes
 from store import Store, agg_sentiment, merge_signals, sj
@@ -25,6 +26,7 @@ class Monitor:
         self.cfg = load_config(self.cfg_path)
         self.matcher = Matcher(self.cfg)
         self.store = Store(os.path.join(base_dir, "news.db"))
+        self.events = EventTracker(self.store)      # 事件追蹤（資料存在 news.db）
         self.lock = threading.RLock()
         self.wake = threading.Event()
         self.state = {"running": False, "last_start": 0, "last_end": 0, "next_run": 0,
@@ -91,6 +93,7 @@ class Monitor:
         since = int(time.time()) - cfg["settings"]["keep_days"] * 86400
         rows = self.store.rows_for_rescore(since)
         names = {w["name"] for w in cfg["watchlist"]}
+        pinned = self.store.event_pinned_ids()      # 事件追蹤收進去的新聞：不當雜訊清掉
         market_of = {w["name"]: w.get("market", "") for w in cfg["watchlist"]}
         keep_all = {f["name"] for f in cfg["feeds"] if f.get("keep_all")}
         new_tags, sig, neu, excl, kwp, kwn, imp, base_of = {}, {}, {}, {}, {}, {}, {}, {}
@@ -123,11 +126,11 @@ class Monitor:
                 for t in new_tags[r["id"]]:
                     if t not in new_union:
                         new_union.append(t)
-            protected = any(r["starred"] or r["source"] in keep_all or matcher.source_important(r["source"])
+            protected = any(r["starred"] or r["id"] in pinned or r["source"] in keep_all or matcher.source_important(r["source"])
                             for r in mem)
             # 盤中速報這類「整篇排除」的雜訊：只要有加星號就保留，不看來源是否「收錄全部」
             # （跟下面「找不到標的」的清理不同——那類是標的變了才清，這類是文章本身就是雜訊）。
-            if any(excl[r["id"]] for r in mem) and not any(r["starred"] for r in mem):
+            if any(excl[r["id"]] for r in mem) and not any(r["starred"] or r["id"] in pinned for r in mem):
                 delete_ids += [r["id"] for r in mem]
                 continue
             if old_union and not new_union and all(t in names for t in old_union) and not protected:
@@ -240,17 +243,22 @@ class Monitor:
             # 命中的結果一起看，不能只看有沒有比對到標的——否則規則命中、但沒有對應標的的新聞，
             # 在沒開「收錄全部」的來源上會被提早濾掉，永遠沒機會被標示。
             signals = matcher.signals(r["title"], tags)
+            # 事件追蹤：符合任一個啟用中事件規則的新聞，就算沒比對到關注標的也收進來；
+            # 事件專用的 Google 搜尋來源（event_id）則一定要真的符合規則才收，Google 回傳的模糊結果不直接收。
+            ev_hit = bool(self.events.hit(r["title"], r["summary"], tags, []))
+            if src.get("event_id") and not ev_hit:
+                continue
             # 重要消息來源（經濟日報／工商時報／華爾街見聞／東方財富網，設定 → 一般設定可以增減）：
             # 不管有沒有比對到關注標的、板塊規則，也不管主動搜尋的財經情境詞有沒有命中，一律收進來、
             # 並標記為 important，不受前面那套多方／空方／中性關鍵詞比對機制限制。用來源名稱判斷
             # （而不是來源設定裡的旗標），這樣既有安裝不用重新設定來源就能套用新的預設清單。
             important = matcher.source_important(r["source"])
             if not matched and not signals:
-                if not src.get("keep_all") and not important:
+                if not src.get("keep_all") and not important and not ev_hit:
                     continue
                 # 主動搜尋來源：關鍵字本身可能太通用（例如「首度」），標題還要有財經相關的字
                 # 或股票代碼才留下，不然會洗進體育、娛樂這類無關新聞。重要消息來源不受這層限制。
-                if src.get("finance_context_required") and not important:
+                if src.get("finance_context_required") and not important and not ev_hit:
                     if not matcher.has_finance_context(r["title"]) and not extract_stock_codes(r["title"]):
                         continue
             markets = []
@@ -261,7 +269,7 @@ class Monitor:
                 # 重要消息來源裡本來沒開「收錄全部」的（例如東方財富焦點新聞，量大且多是跟關注標的
                 # 無關的中國內需股新聞），沒比對到任何標的時不要掛上大範圍市場標籤（例如「總經」），
                 # 不然會洗版到一般的市場瀏覽畫面——這篇還是會收進來，只是只出現在「重要消息來源」集錦。
-                if not (important and not src.get("keep_all")):
+                if not (important and not src.get("keep_all")) and not (ev_hit and not tags):
                     markets = [src["market"]]
             base, _generic, neutral = matcher.score(r["title"], r["summary"], matched)
             sent = agg_sentiment(signals)
@@ -277,7 +285,7 @@ class Monitor:
     def run_cycle(self):
         with self.lock:
             cfg, matcher = self.cfg, self.matcher
-        sources = build_sources(cfg)
+        sources = build_sources(cfg) + self.events.search_sources(cfg["settings"]["keep_days"])
         self.state.update(running=True, last_start=int(time.time()))
         t0 = time.time()
         totals = {"new": 0, "dup": 0}
@@ -305,6 +313,10 @@ class Monitor:
                 self.store.set_status(src["name"], src["url"], True, res["new"] + res["dup"], "")
 
         self.store.prune_status({s["name"] for s in sources})
+        try:
+            self.events.sync()          # 先歸進事件（記下 id）再清舊新聞，事件裡的新聞才不會被清掉
+        except Exception:
+            log("事件追蹤歸類時發生錯誤：\n" + traceback.format_exc())
         self.store.purge(cfg["settings"]["keep_days"])
 
         summary = "%d 個來源，新增 %d 則（另有 %d 則與既有新聞重複），失敗 %d 個，耗時 %.1f 秒" % (

@@ -14,6 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 from config import ConfigError, market_list
+from events import EventError
 from monitor import Monitor, log
 from enrich import Enricher
 from translate import Translator
@@ -22,7 +23,7 @@ import ai_digest
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 INDEX_PATH = os.path.join(BASE_DIR, "static", "index.html")
 MAX_BODY = 1024 * 1024
-BUILD = "2026-11-10.1"   # 必須跟 static/index.html 裡的 BUILD 一致；網頁用它偵測「檔案只更新了一半」
+BUILD = "2026-11-13.1"   # 必須跟 static/index.html 裡的 BUILD 一致；網頁用它偵測「檔案只更新了一半」
 
 
 def _one(qs, key, default=None):
@@ -130,6 +131,11 @@ def make_handler(monitor):
                     return self._json({"candidates": cands})
                 if path == "/api/config":
                     return self._json(monitor.cfg)
+                if path == "/api/events":
+                    return self._json({
+                        "events": monitor.events.list_events(archived=_one(qs, "archived") == "1"),
+                        "ai_ready": bool(monitor.cfg["settings"]["ai_digest"]["api_key"]),
+                    })
                 self._err(404, "not found")
             except Exception as e:
                 log("API 錯誤 %s：%s" % (path, e))
@@ -203,12 +209,54 @@ def make_handler(monitor):
                 if path == "/api/config":
                     cfg = monitor.apply_config(body)
                     return self._json(cfg)
+                if path == "/api/event":
+                    return self._json(self._event_action(body))
+                if path == "/api/event_ai":
+                    return self._json(self._event_ai(body))
                 self._err(404, "not found")
-            except ConfigError as e:
+            except (ConfigError, EventError, ai_digest.AiDigestError) as e:
                 self._err(400, str(e))
             except Exception as e:
                 log("API 錯誤 %s：%s" % (path, e))
                 self._err(500, str(e))
+
+        def _event_action(self, body):
+            ev, act = monitor.events, body.get("action")
+            eid = _int(body.get("id"), 0)
+            if act == "create":
+                new_id = ev.create(body.get("name"), body.get("rules"))
+                monitor.refresh_now()          # 立刻去抓這個事件的 Google 新聞搜尋
+                return {"ok": True, "id": new_id}
+            if act == "update":
+                changed = ev.update(eid, body.get("name"), body.get("rules"))
+                if changed:
+                    monitor.refresh_now()
+                return {"ok": True, "changed": changed}
+            if act in ("archive", "unarchive"):
+                ev.set_archived(eid, act == "archive")
+                return {"ok": True}
+            if act == "delete":
+                ev.delete(eid)
+                return {"ok": True}
+            if act == "add_note":
+                ev.add_note(eid, body.get("text"))
+                return {"ok": True}
+            if act == "del_note":
+                ev.delete_note(_int(body.get("note_id"), 0))
+                return {"ok": True}
+            if act == "exclude":
+                ev.exclude(eid, _int(body.get("article_id"), 0))
+                return {"ok": True}
+            if act == "save_ai":
+                return {"ok": True, "ai": ev.save_ai(eid, body.get("ai"))}
+            raise ValueError("unknown action")
+
+        def _event_ai(self, body):
+            eid = _int(body.get("id"), 0)
+            name, items = monitor.events.ai_input(eid)
+            ai_cfg = monitor.cfg["settings"]["ai_digest"]
+            result = ai_digest.generate_event(name, items, ai_cfg["api_key"], ai_cfg["model"])
+            return {"ok": True, "ai": monitor.events.store_ai_result(eid, result, len(items), ai_cfg["model"])}
 
         def _action(self, body):
             act = body.get("action")

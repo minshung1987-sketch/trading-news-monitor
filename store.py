@@ -51,6 +51,30 @@ CREATE TABLE IF NOT EXISTS source_status(
   last_count INTEGER,
   total INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS events(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  rules TEXT NOT NULL DEFAULT '',
+  created INTEGER NOT NULL,
+  updated INTEGER NOT NULL,
+  archived INTEGER NOT NULL DEFAULT 0,
+  cursor INTEGER NOT NULL DEFAULT 0,
+  ai TEXT,
+  ai_ts INTEGER
+);
+CREATE TABLE IF NOT EXISTS event_articles(
+  event_id INTEGER NOT NULL,
+  article_id INTEGER NOT NULL,
+  excluded INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(event_id, article_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ea_article ON event_articles(article_id);
+CREATE TABLE IF NOT EXISTS event_notes(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id INTEGER NOT NULL,
+  ts INTEGER NOT NULL,
+  text TEXT NOT NULL
+);
 """
 
 
@@ -246,9 +270,19 @@ class Store:
     def purge(self, keep_days):
         cutoff = int(time.time()) - keep_days * 86400
         with self.lock, self._tx() as c:
-            c.execute("DELETE FROM articles WHERE published < ? AND starred = 0", (cutoff,))
+            # 事件追蹤收進去的新聞（含它們所屬叢集的代表那一則）跟加星號的一樣不清除，
+            # 這樣事件的時間軸不會被「保留天數」截斷。
+            c.execute("DELETE FROM articles WHERE published < ? AND starred = 0 "
+                      "AND id NOT IN (SELECT article_id FROM event_articles WHERE excluded = 0) "
+                      "AND id NOT IN (SELECT dup_of FROM articles WHERE dup_of IS NOT NULL "
+                      "               AND id IN (SELECT article_id FROM event_articles WHERE excluded = 0))", (cutoff,))
             c.execute("DELETE FROM articles WHERE dup_of IS NOT NULL "
                       "AND dup_of NOT IN (SELECT id FROM articles)")
+
+    def event_pinned_ids(self):
+        """事件追蹤收進去的新聞 id（重新比對標的時不能把它們當雜訊刪掉）。"""
+        with self._tx() as c:
+            return {r[0] for r in c.execute("SELECT article_id FROM event_articles WHERE excluded = 0")}
 
     # ------------------------------------------------------------ 來源狀態
 
