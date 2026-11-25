@@ -216,7 +216,9 @@
   select.sortwarn { border-color: var(--warn); color: var(--warn); font-weight: 600; }
   .scope { font-size: 12.5px; font-weight: 600; color: var(--ink); padding: 1px 8px; border-radius: 10px; background: var(--accent-soft2); }
   .scope[hidden] { display: none; }
-  .trstat { font-size: 12.5px; color: var(--ink3); }
+  /* 圖表預覽／翻譯的進度提示：一律預留固定寬度，進度出現或消失時工具列不會變寬變窄、不會換行，下面的新聞列表就不會跟著上下跳 */
+  .trstat { font-size: 12.5px; color: var(--ink3); display: inline-block; min-width: 14px; min-height: 14px; }
+  .trstat.busy::before { content: ''; display: block; width: 12px; height: 12px; margin: 1px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
   .trstat.bad { color: var(--warn); font-weight: 600; }
   .verwarn { padding: 9px 16px; background: var(--warn); color: #fff; font-weight: 600; }
   .verwarn[hidden] { display: none; }
@@ -693,7 +695,7 @@ function schedulePoll() {
   pollTimer = setTimeout(pollStats, running ? 3000 : 20000);
 }
 
-const BUILD = '2026-11-13.1';
+const BUILD = '2026-11-25.1';
 function checkBuild(st) {
   const w = $('#verWarn');
   if (st.build === BUILD) { w.hidden = true; return; }
@@ -985,9 +987,11 @@ async function refreshNow() {
 }
 
 /* ------------------------------------------------------------ 圖表預覽（抓文章頁） */
-function setImgStat(text, bad) {
-  const el = $('#imgStat'); el.textContent = text || ''; el.className = 'trstat' + (bad ? ' bad' : '');
+function setStat(id, text, bad, busy) {     // busy：只顯示一個固定大小的轉圈圈（文字放在滑鼠停留提示），避免工具列版面跟著文字長短跳動
+  const el = $(id); el.textContent = busy ? '' : (text || ''); el.title = busy ? text : '';
+  el.className = 'trstat' + (bad ? ' bad' : '') + (busy ? ' busy' : '');
 }
+function setImgStat(text, bad, busy) { setStat('#imgStat', text, bad, busy); }
 function refreshImgStat() {
   if (S.imgFail) setImgStat('⚠ ' + S.imgFail + ' 張圖被對方網站擋下，無法直接顯示', true); else setImgStat('');
 }
@@ -995,7 +999,7 @@ async function enrichVisible() {
   if (!S.img || S.enBusy || Date.now() < S.enPause) return;
   const todo = S.items.filter(a => a.images === null && !S.enDone.has(a.id)).slice(0, 12);
   if (!todo.length) return;
-  S.enBusy = true; setImgStat('抓取圖表預覽中…');
+  S.enBusy = true; setImgStat('抓取圖表預覽中…', false, true);
   try {
     const r = await api('/api/enrich', { ids: todo.map(a => a.id) });
     (r.done || []).forEach(id => S.enDone.add(id));
@@ -1036,15 +1040,13 @@ function patchZh(a) {
   const title = row.querySelector('.title');
   if (title) title.after(h('div', { class: 'zh' }, a.title_zh));
 }
-function setTrStat(text, bad) {
-  const el = $('#trStat'); el.textContent = text || ''; el.className = 'trstat' + (bad ? ' bad' : '');
-}
+function setTrStat(text, bad, busy) { setStat('#trStat', text, bad, busy); }
 async function translateVisible() {
   if (!S.tr || S.trBusy || Date.now() < S.trPause) return;
   const todo = S.items.filter(a => !a.title_zh && !S.trDone.has(a.id) && looksEnglish(a.title)).slice(0, 30);
   if (!todo.length) return;
   S.trBusy = true;
-  setTrStat('翻譯中…');
+  setTrStat('翻譯中…', false, true);
   try {
     const r = await api('/api/translate', { ids: todo.map(a => a.id) });
     (r.done || []).forEach(id => S.trDone.add(id));

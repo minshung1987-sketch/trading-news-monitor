@@ -23,7 +23,7 @@ import ai_digest
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 INDEX_PATH = os.path.join(BASE_DIR, "static", "index.html")
 MAX_BODY = 1024 * 1024
-BUILD = "2026-11-13.1"   # 必須跟 static/index.html 裡的 BUILD 一致；網頁用它偵測「檔案只更新了一半」
+BUILD = "2026-11-25.1"   # 必須跟 static/index.html 裡的 BUILD 一致；網頁用它偵測「檔案只更新了一半」
 
 
 def _one(qs, key, default=None):
